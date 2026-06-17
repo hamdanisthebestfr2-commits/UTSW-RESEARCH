@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Workspace · REF/CHECK AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = { darkMode: "class", theme: { extend: {
+    colors: {
+      "bg": "#060607", "bg-soft": "#0b0b0d", "surface": "#101012", "surface-2": "#161618", "surface-3": "#1d1d20",
+      "border-subtle": "rgba(255,255,255,0.09)", "border-strong": "rgba(255,255,255,0.16)",
+      "ink": "#F4F4F6", "ink-soft": "#ADADB6", "ink-mute": "#8A8A93",
+      "accent": "#FFFFFF", "accent-2": "#A6A6AE", "ok": "#7FC8A0", "warn": "#D9B776", "bad": "#DB8793",
+    },
+    borderRadius: { DEFAULT: "0.5rem", lg: "0.75rem", xl: "1rem", "2xl": "1.25rem", "3xl": "1.75rem" },
+    fontFamily: { display: ["Space Grotesk","sans-serif"], body: ["Inter","sans-serif"], mono: ["JetBrains Mono","monospace"] },
+  }}};
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { background:#060607; }
+  body::before { content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(900px 600px at 15% -10%, rgba(255,255,255,0.06), transparent 60%),
+      radial-gradient(700px 480px at 100% 0%, rgba(190,200,215,0.05), transparent 60%); }
+
+  .glass { background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012));
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.06), 0 24px 60px -30px rgba(0,0,0,0.8); }
+
+  /* white pill → indigo/purple/pink gradient on hover (text stays dark) */
+  .btn-primary { position:relative; overflow:hidden; isolation:isolate; color:#0a0a0c;
+    background: linear-gradient(180deg,#ffffff,#e7e7ec); border:1px solid rgba(255,255,255,0.6);
+    box-shadow: 0 8px 24px -12px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.9);
+    transition: transform .2s ease, box-shadow .4s ease; }
+  .btn-primary::after { content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit;
+    background: linear-gradient(90deg,#818cf8,#c084fc,#f472b6); opacity:0; transition:opacity .45s ease; }
+  .btn-primary:hover::after { opacity:1; }
+  .btn-primary:hover { box-shadow: 0 14px 38px -10px rgba(168,85,247,0.6); }
+  .btn-primary:active { transform: translateY(1px) scale(0.99); }
+  .btn-primary:disabled { opacity:.55; cursor:not-allowed; }
+  .btn-primary .material-symbols-outlined { color: inherit; }
+
+  /* cursor-tracking rich-orange glow border (hover only, tracks pointer locally) */
+  .beam { position:relative; --base:16; --spread:14; --border:2; --size:520;
+    --border-size: calc(var(--border) * 1px); --spot: calc(var(--size) * 1px);
+    --hue: calc(var(--base) + (var(--xp, 0.5) * var(--spread))); }
+  .beam::before, .beam::after { content:""; position:absolute; inset:0; border-radius:inherit;
+    padding: var(--border-size); background-repeat:no-repeat;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude; pointer-events:none; opacity:0; transition:opacity .3s ease; }
+  .beam:hover::before, .beam:hover::after { opacity:1; }
+  .beam::before { background-image: radial-gradient(var(--spot) var(--spot) at calc(var(--x,50)*1px) calc(var(--y,50)*1px),
+      hsl(var(--hue) 100% 50% / 0.95), transparent 62%); filter: brightness(1.3) saturate(1.2); }
+  .beam::after { background-image: radial-gradient(calc(var(--spot)*0.55) calc(var(--spot)*0.55) at calc(var(--x,50)*1px) calc(var(--y,50)*1px),
+      hsl(32 100% 75% / 0.85), transparent 60%); }
+
+  .lift { transition: transform .4s cubic-bezier(0.16,1,0.3,1), box-shadow .4s ease, border-color .4s ease; }
+  .tilt { transition: transform .25s ease-out; transform-style: preserve-3d; will-change: transform; }
+
+  [data-reveal] { opacity:0; transform:translateY(28px);
+    transition: opacity .7s cubic-bezier(0.16,1,0.3,1), transform .7s cubic-bezier(0.16,1,0.3,1); }
+  [data-reveal].is-visible { opacity:1; transform:none; }
+  [data-stagger] > * { opacity:0; transform:translateY(20px);
+    transition: opacity .6s cubic-bezier(0.16,1,0.3,1), transform .6s cubic-bezier(0.16,1,0.3,1); }
+  [data-stagger].is-visible > * { opacity:1; transform:none; }
+
+  @keyframes scanline { 0%{top:0;opacity:0} 12%{opacity:1} 88%{opacity:1} 100%{top:100%;opacity:0} }
+  .scanline { position:absolute; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, transparent, rgba(255,140,40,0.85), transparent);
+    box-shadow: 0 0 14px rgba(255,140,40,0.5); animation: scanline 3s ease-in-out infinite; }
+  @keyframes blink { 50%{opacity:.2} } .blink { animation: blink 1.2s step-end infinite; }
+
+  .dropzone { transition: border-color .25s ease, background-color .25s ease, transform .2s ease; }
+  .dropzone.dragover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); transform: scale(1.01); }
+
+  .fchip { transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
+  .fchip.active { color:#0a0a0c; background:#fff; border-color:#fff; }
+  .ptab-mobile { transition: color .2s ease, background-color .2s ease, border-color .2s ease; }
+  .ptab-mobile.active { color:#0a0a0c; background:#fff; border-color:#fff; }
+
+  /* manuscript reading surface */
+  .doc-surface { white-space: pre-wrap; word-break: break-word;
+    background: linear-gradient(180deg, rgba(255,255,255,0.015), transparent); border-bottom-left-radius:1.25rem; border-bottom-right-radius:1.25rem; }
+
+  /* in-text citation highlights */
+  mark.cite { color: inherit; background: transparent; border-radius: 3px; padding: 0 2px;
+    cursor: pointer; transition: background-color .2s ease, box-shadow .2s ease, color .2s ease;
+    border-bottom: 2px solid transparent; }
+  mark.v-ok  { background: rgba(127,200,160,0.14); border-bottom-color: rgba(127,200,160,0.7); color:#d6f0e2; }
+  mark.v-warn{ background: rgba(217,183,118,0.15); border-bottom-color: rgba(217,183,118,0.7); color:#f0e3c6; }
+  mark.v-bad { background: rgba(219,135,147,0.16); border-bottom-color: rgba(219,135,147,0.75); color:#f4d3d9; }
+  mark.cite:hover { filter: brightness(1.25); }
+  mark.cite.selected { box-shadow: 0 0 0 2px rgba(255,255,255,0.55), 0 0 16px -2px rgba(255,160,60,0.7);
+    animation: markpulse 1.1s ease-out; }
+  mark.cite.dim { opacity: .28; }
+  @keyframes markpulse { 0%{ box-shadow:0 0 0 0 rgba(255,160,60,0.8);} 100%{ box-shadow:0 0 0 8px rgba(255,160,60,0);} }
+  /* highlights toggled off */
+  .hl-off mark.cite { background: transparent !important; border-bottom-color: transparent !important; color: inherit !important; box-shadow:none !important; }
+
+  /* reference cards */
+  .ref-card { transition: border-color .25s ease, background-color .25s ease, transform .25s ease; }
+  .ref-card.selected { border-color: rgba(255,255,255,0.4) !important; background: rgba(255,255,255,0.04); }
+  .conf-bar > span { display:block; height:100%; border-radius:9999px; }
+
+  a:focus-visible, button:focus-visible, input:focus-visible, label:focus-visible {
+    outline:2px solid #fff; outline-offset:2px; border-radius:6px; }
+  input { color-scheme: dark; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius:8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal], [data-stagger] > * { opacity:1 !important; transform:none !important; }
+    .scanline, .blink { animation: none; }
+  }
+</style>
+</head>
+<body class="bg-bg text-ink font-body antialiased min-h-screen">
+
+  <!-- session gate -->
+  <div id="gate" class="min-h-screen flex items-center justify-center">
+    <div class="w-7 h-7 rounded-full border-2 border-ink-soft border-t-transparent animate-spin"></div>
+  </div>
+
+  <div id="app" class="hidden relative z-10 min-h-screen flex flex-col">
+    <!-- top bar -->
+    <header class="sticky top-0 z-40 border-b border-border-subtle bg-bg/80 backdrop-blur-md">
+      <div class="h-16 px-5 flex items-center justify-between max-w-[1400px] mx-auto w-full">
+        <div class="flex items-center gap-3">
+          <button id="sidebar-toggle" class="lg:hidden text-ink p-1.5 -ml-1"><span class="material-symbols-outlined">menu</span></button>
+          <a href="index.html" class="flex items-center gap-2.5 font-display text-lg font-bold">
+            <span class="w-7 h-7 rounded-lg bg-gradient-to-br from-white to-accent-2 flex items-center justify-center"><span class="material-symbols-outlined text-bg text-[18px]" style="font-variation-settings:'FILL' 1;">verified</span></span>
+            REF<span class="text-ink-mute font-normal">/</span>CHECK
+          </a>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full glass">
+            <span id="user-avatar" class="w-6 h-6 rounded-full bg-gradient-to-br from-white/25 to-white/5 border border-border-subtle flex items-center justify-center text-[11px] font-semibold text-ink">U</span>
+            <span id="user-email" class="text-xs text-ink-soft max-w-[180px] truncate">—</span>
+          </div>
+          <button id="logout-btn" class="flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors px-2 py-1.5">
+            <span class="material-symbols-outlined text-[18px]">logout</span><span class="hidden sm:inline">Sign out</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex-grow max-w-[1400px] mx-auto w-full flex">
+      <!-- sidebar -->
+      <aside id="sidebar" class="hidden lg:flex w-64 shrink-0 flex-col border-r border-border-subtle p-4 gap-4">
+        <button id="new-analysis-btn" class="btn-primary w-full px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">add</span> New analysis
+        </button>
+        <div class="flex items-center justify-between px-1">
+          <span class="font-mono text-[11px] text-ink-mute uppercase tracking-wider">History</span>
+          <span id="history-count" class="font-mono text-[11px] text-ink-mute">0</span>
+        </div>
+        <div id="history-list" class="flex flex-col gap-1.5 overflow-y-auto flex-grow">
+          <p id="history-empty" class="text-xs text-ink-mute px-1 py-6 text-center">No analyses yet. Upload a manuscript to get started.</p>
+        </div>
+      </aside>
+
+      <!-- main -->
+      <main class="flex-grow p-5 sm:p-8 min-w-0">
+
+        <!-- UPLOAD VIEW -->
+        <section id="view-upload" class="max-w-2xl mx-auto">
+          <div data-reveal class="text-center mb-8">
+            <div class="font-mono text-[11px] text-ink-mute uppercase tracking-wider mb-3">New analysis</div>
+            <h1 class="font-display text-3xl sm:text-4xl text-white mb-3">Verify your references</h1>
+            <p class="text-ink-soft">Upload a manuscript and we'll check every citation for existence and integrity.</p>
+          </div>
+
+          <div data-reveal class="glass beam lift rounded-2xl p-2">
+            <label id="dropzone" for="file-input"
+              class="dropzone block cursor-pointer rounded-xl border-2 border-dashed border-border-strong px-6 py-12 text-center">
+              <span class="material-symbols-outlined text-4xl text-ink-soft mb-3 block">upload_file</span>
+              <div class="text-white font-medium mb-1">Drag &amp; drop your manuscript</div>
+              <div class="text-sm text-ink-mute mb-4">or click to browse</div>
+              <div class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-mute">
+                <span class="px-2 py-1 rounded bg-white/5 border border-border-subtle">PDF</span>
+                <span class="px-2 py-1 rounded bg-white/5 border border-border-subtle">DOCX</span>
+                <span>· up to 20&nbsp;MB</span>
+              </div>
+              <input id="file-input" type="file" accept=".pdf,.docx" class="hidden">
+            </label>
+          </div>
+
+          <!-- selected file -->
+          <div id="file-selected" class="hidden mt-4 glass rounded-xl p-4 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-lg bg-white/5 border border-border-subtle flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-ink-soft" id="file-icon">description</span>
+            </span>
+            <div class="min-w-0 flex-grow">
+              <div id="file-name" class="text-sm text-white truncate">file.pdf</div>
+              <div id="file-meta" class="font-mono text-[11px] text-ink-mute">—</div>
+            </div>
+            <button id="file-remove" class="text-ink-mute hover:text-bad transition-colors p-1"><span class="material-symbols-outlined text-[20px]">close</span></button>
+          </div>
+
+          <div id="upload-error" class="hidden mt-4 text-sm rounded-lg px-3 py-2.5 bg-bad/10 text-bad border border-bad/20"></div>
+
+          <button id="analyze-btn" disabled
+            class="btn-primary w-full mt-6 px-6 py-3.5 rounded-lg font-semibold flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined">neurology</span> Analyze references
+          </button>
+        </section>
+
+        <!-- PROCESSING VIEW -->
+        <section id="view-processing" class="hidden max-w-xl mx-auto pt-10">
+          <div class="glass beam rounded-2xl p-8 relative overflow-hidden">
+            <div class="scanline"></div>
+            <div class="flex items-center justify-between border-b border-border-subtle pb-4 mb-6">
+              <div class="font-mono text-[11px] text-ink-soft uppercase tracking-wider">Analyzing<span class="blink">_</span></div>
+              <div class="w-7 h-7 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+            </div>
+            <div id="steps" class="flex flex-col gap-3.5">
+              <!-- steps injected -->
+            </div>
+            <div class="mt-7 pt-5 border-t border-border-subtle">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs text-ink-mute">Progress</span>
+                <span id="progress-label" class="font-mono text-xs text-white">0%</span>
+              </div>
+              <div class="h-2 bg-bg rounded-full overflow-hidden">
+                <div id="progress-bar" class="h-full bg-gradient-to-r from-white to-accent-2 rounded-full transition-all duration-500" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RESULTS VIEW -->
+        <section id="view-results" class="hidden">
+          <!-- report header -->
+          <div data-reveal class="glass rounded-2xl p-5 sm:p-6 mb-5">
+            <div class="flex flex-col lg:flex-row lg:items-center gap-6">
+              <!-- score ring -->
+              <div class="flex items-center gap-4 shrink-0">
+                <div class="relative w-[88px] h-[88px] shrink-0">
+                  <svg viewBox="0 0 36 36" class="w-[88px] h-[88px] -rotate-90">
+                    <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="2.5"></circle>
+                    <circle id="score-ring" cx="18" cy="18" r="15.5" fill="none" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="97.4" stroke-dashoffset="97.4"></circle>
+                    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#8A8A93"/></linearGradient></defs>
+                  </svg>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span id="score-num" class="font-display text-2xl text-white leading-none">0</span>
+                    <span class="font-mono text-[8px] text-ink-mute uppercase tracking-wider mt-0.5">integrity</span>
+                  </div>
+                </div>
+              </div>
+              <!-- summary + bar -->
+              <div class="min-w-0 flex-grow">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <div class="font-mono text-[11px] text-ink-mute uppercase tracking-wider mb-1">Analysis report</div>
+                    <h1 id="result-filename" class="font-display text-xl sm:text-2xl text-white truncate">manuscript.pdf</h1>
+                    <p id="result-summary" class="text-sm text-ink-soft mt-1.5">—</p>
+                  </div>
+                  <button id="export-btn" class="glass px-3 py-2 rounded-lg text-xs text-ink hover:border-border-strong transition-colors flex items-center gap-1.5 self-start shrink-0">
+                    <span class="material-symbols-outlined text-[16px]">download</span><span class="hidden sm:inline">Export CSV</span>
+                  </button>
+                </div>
+                <!-- stacked proportion bar -->
+                <div class="mt-4">
+                  <div id="stack-bar" class="flex h-2.5 rounded-full overflow-hidden bg-white/5">
+                    <div id="bar-verified" class="bg-ok h-full transition-all duration-700" style="width:0%"></div>
+                    <div id="bar-review" class="bg-warn h-full transition-all duration-700" style="width:0%"></div>
+                    <div id="bar-flagged" class="bg-bad h-full transition-all duration-700" style="width:0%"></div>
+                  </div>
+                  <div class="flex flex-wrap gap-x-5 gap-y-1 mt-2.5">
+                    <span class="inline-flex items-center gap-1.5 text-xs text-ink-soft"><span class="w-2 h-2 rounded-full bg-ok"></span>Verified <b id="legend-verified" class="text-white font-semibold ml-0.5">0</b></span>
+                    <span class="inline-flex items-center gap-1.5 text-xs text-ink-soft"><span class="w-2 h-2 rounded-full bg-warn"></span>Review <b id="legend-review" class="text-white font-semibold ml-0.5">0</b></span>
+                    <span class="inline-flex items-center gap-1.5 text-xs text-ink-soft"><span class="w-2 h-2 rounded-full bg-bad"></span>Flagged <b id="legend-flagged" class="text-white font-semibold ml-0.5">0</b></span>
+                    <span id="result-date" class="text-xs text-ink-mute ml-auto self-center">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- mobile pane tabs -->
+          <div class="flex lg:hidden gap-2 mb-4">
+            <button class="ptab-mobile active flex-1 py-2 rounded-lg text-sm font-medium border border-border-subtle text-ink-soft" data-pane="doc">Manuscript</button>
+            <button class="ptab-mobile flex-1 py-2 rounded-lg text-sm font-medium border border-border-subtle text-ink-soft" data-pane="refs">References</button>
+          </div>
+
+          <!-- two-pane workspace -->
+          <div class="grid lg:grid-cols-[1.35fr_1fr] gap-5 items-start">
+            <!-- LEFT: manuscript -->
+            <div id="pane-doc" class="glass rounded-2xl flex flex-col min-h-[300px] lg:sticky lg:top-[88px]" style="max-height:calc(100vh - 110px)">
+              <div class="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-border-subtle shrink-0">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="material-symbols-outlined text-[18px] text-ink-soft">article</span>
+                  <span class="text-sm font-medium text-white">Manuscript</span>
+                  <span id="doc-cite-count" class="font-mono text-[10px] text-ink-mute"></span>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                  <div class="hidden sm:flex items-center gap-2.5 font-mono text-[10px] text-ink-mute">
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-ok/60"></span>real</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-warn/60"></span>review</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-bad/60"></span>fake</span>
+                  </div>
+                  <button id="hl-toggle" class="text-xs text-ink-soft hover:text-ink transition-colors inline-flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[16px]">format_ink_highlighter</span><span class="hidden sm:inline">Highlights</span>
+                  </button>
+                </div>
+              </div>
+              <div id="doc-text" class="doc-surface overflow-y-auto px-5 sm:px-7 py-5 text-[14.5px] leading-[1.85] text-ink-soft flex-grow"></div>
+            </div>
+
+            <!-- RIGHT: references -->
+            <div id="pane-refs" class="flex flex-col gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <button class="fchip active px-3 py-1.5 rounded-full text-xs font-medium border border-border-subtle text-ink-soft" data-filter="all">All</button>
+                <button class="fchip px-3 py-1.5 rounded-full text-xs font-medium border border-border-subtle text-ink-soft" data-filter="verified">Verified</button>
+                <button class="fchip px-3 py-1.5 rounded-full text-xs font-medium border border-border-subtle text-ink-soft" data-filter="review">Review</button>
+                <button class="fchip px-3 py-1.5 rounded-full text-xs font-medium border border-border-subtle text-ink-soft" data-filter="flagged">Flagged</button>
+              </div>
+              <div data-stagger id="ref-list" class="flex flex-col gap-2.5"></div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- mobile sidebar backdrop -->
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 bg-black/60 lg:hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="supabase-config.js?v=7"></script>
+  <script src="app-ui.js?v=7"></script>
+</body>
+</html>

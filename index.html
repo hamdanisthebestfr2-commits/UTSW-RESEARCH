@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>REF-CHECK AI — The Intelligent Guardian of Academic Integrity</title>
+<meta name="description" content="AI-powered manuscript verification. Catch fabricated references and verify that every citation is real and properly supported — in under a minute.">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "bg": "#060607",
+          "bg-soft": "#0b0b0d",
+          "surface": "#101012",
+          "surface-2": "#161618",
+          "surface-3": "#1d1d20",
+          "border-subtle": "rgba(255,255,255,0.09)",
+          "border-strong": "rgba(255,255,255,0.16)",
+          "ink": "#F4F4F6",
+          "ink-soft": "#ADADB6",
+          "ink-mute": "#8A8A93",
+          "accent": "#FFFFFF",
+          "accent-2": "#A6A6AE",
+          "accent-3": "#D4D4DA",
+          "ok": "#7FC8A0",
+          "warn": "#D9B776",
+          "bad": "#DB8793",
+        },
+        borderRadius: { DEFAULT: "0.5rem", lg: "0.75rem", xl: "1rem", "2xl": "1.25rem", "3xl": "1.75rem", full: "9999px" },
+        spacing: { "container-padding": "24px", base: "8px" },
+        fontFamily: {
+          display: ["Space Grotesk", "sans-serif"],
+          mono: ["JetBrains Mono", "monospace"],
+          body: ["Inter", "sans-serif"],
+        },
+        fontSize: {
+          "display-xl": ["76px", { lineHeight: "78px", letterSpacing: "-0.035em", fontWeight: "700" }],
+          "display-lg": ["56px", { lineHeight: "60px", letterSpacing: "-0.03em", fontWeight: "700" }],
+          "display-mobile": ["40px", { lineHeight: "44px", letterSpacing: "-0.025em", fontWeight: "700" }],
+          "headline": ["34px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600" }],
+          "label-caps": ["12px", { lineHeight: "16px", letterSpacing: "0.12em", fontWeight: "500" }],
+          "mono-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+          "body-md": ["16px", { lineHeight: "26px", fontWeight: "400" }],
+          "body-lg": ["19px", { lineHeight: "30px", fontWeight: "400" }],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { overflow-x: hidden; background: #07070c; }
+
+  /* Visible keyboard focus for accessibility */
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid #FFFFFF; outline-offset: 3px; border-radius: 6px;
+  }
+  :focus:not(:focus-visible) { outline: none; }
+
+  /* Ambient gradient field */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(900px 600px at 18% -8%, rgba(255,255,255,0.10), transparent 60%),
+      radial-gradient(800px 520px at 92% 8%, rgba(190,200,215,0.07), transparent 60%),
+      radial-gradient(700px 600px at 60% 100%, rgba(255,255,255,0.04), transparent 55%);
+  }
+  .noise::after {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #spotlight {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(440px circle at var(--mx, 50%) var(--my, -20%), rgba(255,255,255,0.06), transparent 70%);
+  }
+
+  /* Glass surfaces with top inner highlight */
+  .glass {
+    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012));
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--tw-border, rgba(255,255,255,0.09));
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.06), 0 24px 60px -30px rgba(0,0,0,0.8);
+  }
+
+  .gradient-text {
+    background: linear-gradient(100deg, #FFFFFF 0%, #C9C9D2 45%, #8E8E99 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  @keyframes shimmer { to { background-position: 200% center; } }
+  .shimmer-text {
+    background: linear-gradient(90deg, #6E6E78, #FFFFFF, #B8B8C2, #6E6E78);
+    background-size: 250% auto; -webkit-background-clip: text; background-clip: text;
+    color: transparent; animation: shimmer 8s linear infinite;
+  }
+
+  .bg-grid {
+    background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 52px 52px;
+    mask-image: radial-gradient(ellipse 75% 55% at 50% 30%, #000 25%, transparent 72%);
+    -webkit-mask-image: radial-gradient(ellipse 75% 55% at 50% 30%, #000 25%, transparent 72%);
+  }
+
+  @keyframes float-slow { 0%,100% { transform: translate(0,0) scale(1);} 50% { transform: translate(36px,-28px) scale(1.16);} }
+  .aurora { animation: float-slow 18s ease-in-out infinite; }
+  .aurora-2 { animation: float-slow 22s ease-in-out infinite reverse; }
+
+  @keyframes pulse-dot {
+    0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.5); }
+    70% { box-shadow: 0 0 0 9px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+  }
+  .pulse-dot { animation: pulse-dot 2.2s infinite; }
+
+  /* CTA button — white at rest, colorful gradient fills the face on hover (text stays black) */
+  .btn-primary {
+    position: relative; overflow: hidden; isolation: isolate;
+    color: #0a0a0c !important;
+    background: linear-gradient(180deg, #ffffff, #e7e7ec);
+    border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 0 8px 24px -12px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.9);
+    transition: transform 0.2s ease, box-shadow 0.4s ease;
+  }
+  .btn-primary::after { /* indigo → purple → pink face, hidden until hover */
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    background: linear-gradient(90deg, #818cf8, #c084fc, #f472b6);
+    opacity: 0; transition: opacity 0.45s ease;
+  }
+  .btn-primary:hover::after { opacity: 1; }
+  .btn-primary:hover { box-shadow: 0 14px 38px -10px rgba(168,85,247,0.6); }
+  .btn-primary:active { transform: translateY(1px) scale(0.99); }
+  .btn-primary .material-symbols-outlined { color: inherit; }
+
+  /* Liquid-glass on the neutral/secondary glass buttons too */
+  .glass-liquid { position: relative; isolation: isolate; overflow: hidden; }
+  .glass-liquid::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    backdrop-filter: url("#liquid-glass") blur(2px);
+    -webkit-backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+  .glass-liquid { box-shadow:
+      inset 2px 2px 0.5px -2.5px rgba(255,255,255,0.4),
+      inset -2px -2px 0.5px -2.5px rgba(255,255,255,0.35),
+      inset 0 0 6px 4px rgba(255,255,255,0.06); }
+
+  /* Reveal */
+  [data-reveal] { opacity: 0; transform: translateY(40px);
+    transition: opacity 0.85s cubic-bezier(0.16,1,0.3,1), transform 0.85s cubic-bezier(0.16,1,0.3,1); will-change: opacity, transform; }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  [data-reveal="left"] { transform: translateX(-52px); }
+  [data-reveal="right"] { transform: translateX(52px); }
+  [data-reveal="left"].is-visible, [data-reveal="right"].is-visible { transform: translateX(0); }
+  [data-reveal="scale"] { transform: scale(0.94); }
+  [data-reveal="scale"].is-visible { transform: scale(1); }
+  [data-stagger] > * { opacity: 0; transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+  [data-stagger].is-visible > * { opacity: 1; transform: translateY(0); }
+
+  /* Spotlight glow border — rich orange, hover only, tracks cursor locally */
+  .beam {
+    position: relative;
+    --base: 16; --spread: 14; --border: 2; --size: 520;
+    --border-size: calc(var(--border) * 1px);
+    --spot: calc(var(--size) * 1px);
+    --hue: calc(var(--base) + (var(--xp, 0.5) * var(--spread)));
+  }
+  .beam::before, .beam::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    padding: var(--border-size);
+    background-repeat: no-repeat;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s ease;
+  }
+  /* only the hovered card lights up, and the glow follows the cursor */
+  .beam:hover::before, .beam:hover::after { opacity: 1; }
+  /* rich orange glow at the cursor position (local card coords) */
+  .beam::before {
+    background-image: radial-gradient(var(--spot) var(--spot) at
+      calc(var(--x, 50) * 1px) calc(var(--y, 50) * 1px),
+      hsl(var(--hue) 100% 50% / 0.95), transparent 62%);
+    filter: brightness(1.3) saturate(1.2);
+  }
+  /* warm bright core on the border */
+  .beam::after {
+    background-image: radial-gradient(calc(var(--spot) * 0.55) calc(var(--spot) * 0.55) at
+      calc(var(--x, 50) * 1px) calc(var(--y, 50) * 1px),
+      hsl(32 100% 75% / 0.85), transparent 60%);
+  }
+
+  .lift { transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), box-shadow 0.4s ease, border-color 0.4s ease; }
+  .lift:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.28); }
+
+  #scroll-progress { position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+    background: linear-gradient(90deg, #FFFFFF, #9A9AA4); z-index: 60;
+    box-shadow: 0 0 12px rgba(255,255,255,0.55); transition: width 0.1s linear; }
+
+  .nav-link.active { color: #FFFFFF; }
+  .nav-link::after { content: ""; display: block; height: 2px; width: 0;
+    background: linear-gradient(90deg,#FFFFFF,#9A9AA4); transition: width 0.3s ease; margin-top: 3px; }
+  .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+
+  #hero-canvas { position: absolute; inset: 0; z-index: 1; opacity: 0.5; }
+
+  @keyframes marquee { to { transform: translateX(-50%); } }
+  .marquee-track { display: flex; width: max-content; animation: marquee 32s linear infinite; }
+  .marquee-mask { mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+
+  @keyframes scanline { 0% { top: 0; opacity: 0;} 12%{opacity:1;} 88%{opacity:1;} 100% { top: 100%; opacity: 0;} }
+  .scanline { position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), rgba(200,200,210,0.5), transparent);
+    box-shadow: 0 0 14px rgba(255,255,255,0.5); animation: scanline 4s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.2; } }
+  .blink { animation: blink 1.2s step-end infinite; }
+
+  .tilt { transition: transform 0.25s ease-out; transform-style: preserve-3d; will-change: transform; }
+
+  /* Platform preview tabs */
+  .ptab { border: 1px solid transparent; color: #ADADB6; }
+  .ptab:not(.active):hover { color: #F4F4F6; }
+  .ptab.active { color: #FFFFFF; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.10); }
+  .ptab-bar { position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 2px; height: 14px; border-radius: 2px; background: #fff; opacity: 0; transition: opacity 0.3s ease; }
+  .ptab.active .ptab-bar { opacity: 1; }
+  .panel-anim { animation: panelIn 0.4s cubic-bezier(0.23,1,0.32,1); }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } to { opacity: 1; transform: none; filter: blur(0); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    [data-reveal], [data-stagger] > * { opacity: 1 !important; transform: none !important; }
+    .aurora, .aurora-2, .shimmer-text, .marquee-track, .scanline, .blink, .beam::before, .panel-anim { animation: none; }
+  }
+</style>
+</head>
+<body class="noise bg-bg text-ink font-body antialiased min-h-screen flex flex-col selection:bg-accent/30 selection:text-white">
+
+<div id="scroll-progress"></div>
+<div id="spotlight"></div>
+
+<!-- Liquid-glass refraction filter (referenced by .liquid-glass backdrop) -->
+<svg class="absolute w-0 h-0" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="liquid-glass" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.012" numOctaves="2" seed="7" result="noise"/>
+      <feGaussianBlur in="noise" stdDeviation="1.5" result="blurNoise"/>
+      <feDisplacementMap in="SourceGraphic" in2="blurNoise" scale="42" xChannelSelector="R" yChannelSelector="B"/>
+    </filter>
+  </defs>
+</svg>
+
+<!-- Nav -->
+<nav id="navbar" aria-label="Main Navigation" class="fixed top-0 w-full z-50 transition-all duration-300 border-b border-transparent">
+  <div class="flex justify-between items-center px-container-padding h-20 max-w-7xl mx-auto">
+    <a class="font-display text-xl md:text-2xl font-bold tracking-tight text-ink flex items-center gap-2.5" href="#hero">
+      <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-white to-accent-2 flex items-center justify-center shadow-[0_6px_18px_-6px_rgba(255,255,255,0.5)]">
+        <span class="material-symbols-outlined text-bg text-[20px]" style="font-variation-settings:'FILL' 1;">verified</span>
+      </span>
+      REF<span class="text-ink-mute font-normal">/</span>CHECK
+    </a>
+    <div class="hidden md:flex items-center gap-8">
+      <a class="nav-link text-ink-soft transition-colors text-body-md" href="#features">Features</a>
+      <a class="nav-link text-ink-soft transition-colors text-body-md" href="#how-it-works">How It Works</a>
+      <a class="nav-link text-ink-soft transition-colors text-body-md" href="#platform">Platform</a>
+      <a class="nav-link text-ink-soft transition-colors text-body-md" href="#verification">Results</a>
+      <a class="nav-link text-ink-soft transition-colors text-body-md" href="#audience">Who It's For</a>
+    </div>
+    <div class="flex items-center gap-4">
+      <a class="hidden md:block text-body-md text-ink-soft hover:text-ink transition-colors" href="auth.html">Log in</a>
+      <a class="btn-primary inline-flex items-center gap-1.5 text-white text-body-md px-5 py-2.5 rounded-DEFAULT font-semibold transition-transform duration-200 active:scale-95" href="auth.html?mode=signup">Get Started <span class="material-symbols-outlined text-[18px]">arrow_outward</span></a>
+      <button id="menu-btn" aria-label="Toggle menu" class="md:hidden text-ink p-2"><span class="material-symbols-outlined">menu</span></button>
+    </div>
+  </div>
+  <div id="mobile-menu" class="md:hidden hidden glass border-t border-border-subtle">
+    <div class="flex flex-col px-container-padding py-4 gap-4">
+      <a class="mobile-link text-ink-soft hover:text-ink" href="#features">Features</a>
+      <a class="mobile-link text-ink-soft hover:text-ink" href="#how-it-works">How It Works</a>
+      <a class="mobile-link text-ink-soft hover:text-ink" href="#platform">Platform</a>
+      <a class="mobile-link text-ink-soft hover:text-ink" href="#verification">Results</a>
+      <a class="mobile-link text-ink-soft hover:text-ink" href="#audience">Who It's For</a>
+      <a class="mobile-link text-ink-soft hover:text-ink" href="auth.html">Log in</a>
+    </div>
+  </div>
+</nav>
+
+<main class="flex-grow pt-20 relative z-10">
+
+  <!-- Hero (asymmetric editorial layout) -->
+  <section class="relative pt-20 lg:pt-28 pb-24 overflow-hidden" id="hero">
+    <div class="absolute inset-0 bg-grid z-0"></div>
+    <canvas id="hero-canvas"></canvas>
+    <div class="aurora absolute -top-24 -left-24 w-[520px] h-[520px] rounded-full bg-accent/20 blur-[140px] z-0"></div>
+    <div class="aurora-2 absolute top-20 -right-24 w-[460px] h-[460px] rounded-full bg-accent-2/15 blur-[140px] z-0"></div>
+
+    <div class="relative z-10 max-w-7xl mx-auto px-container-padding grid lg:grid-cols-12 gap-12 items-center">
+      <!-- Left: copy -->
+      <div class="lg:col-span-6 text-center lg:text-left">
+        <div data-reveal="scale" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border-subtle glass mb-7">
+          <span class="w-2 h-2 rounded-full bg-accent pulse-dot"></span>
+          <span class="font-mono text-label-caps text-ink-soft">AI-POWERED MANUSCRIPT VERIFICATION</span>
+        </div>
+        <h1 data-reveal class="font-display text-display-mobile lg:text-display-xl text-white mb-6">
+          Catch fabricated references.
+          <span class="shimmer-text">Defend real research.</span>
+        </h1>
+        <p data-reveal class="text-body-lg text-ink-soft max-w-xl mx-auto lg:mx-0 mb-9">
+          REF/CHECK reads your manuscript, extracts every citation, and verifies in seconds whether each one is
+          <span class="text-ink font-medium">real</span> and
+          <span class="text-ink font-medium">actually supported</span> by its source.
+        </p>
+        <div data-reveal class="flex flex-col sm:flex-row justify-center lg:justify-start items-center gap-4 mb-10">
+          <a class="btn-primary w-full sm:w-auto text-white text-body-md px-7 py-3.5 rounded-DEFAULT font-semibold transition-transform duration-200 active:scale-95 flex items-center justify-center gap-2" href="auth.html?mode=signup">
+            <span class="material-symbols-outlined">upload_file</span> Upload Manuscript
+            <span class="material-symbols-outlined text-[18px]">arrow_outward</span>
+          </a>
+          <a class="glass glass-liquid w-full sm:w-auto text-ink text-body-md px-7 py-3.5 rounded-DEFAULT font-semibold hover:border-border-strong transition-all duration-200 active:scale-95 flex items-center justify-center gap-2" href="#how-it-works">
+            <span class="material-symbols-outlined">play_circle</span> See How It Works
+          </a>
+        </div>
+        <div data-stagger class="flex flex-wrap justify-center lg:justify-start gap-x-8 gap-y-4">
+          <div><div class="font-display text-2xl text-white" data-count="2" data-suffix="M+">0</div><div class="font-mono text-label-caps text-ink-mute mt-0.5">CITATIONS CHECKED</div></div>
+          <div><div class="font-display text-2xl text-white" data-count="99" data-suffix="%">0</div><div class="font-mono text-label-caps text-ink-mute mt-0.5">MATCH ACCURACY</div></div>
+          <div><div class="font-display text-2xl text-white" data-count="60" data-suffix="s">0</div><div class="font-mono text-label-caps text-ink-mute mt-0.5">AVG. SCAN TIME</div></div>
+        </div>
+      </div>
+
+      <!-- Right: product mockup -->
+      <div class="lg:col-span-6" id="hero-mockup" data-reveal="right">
+        <div class="tilt relative">
+          <!-- floating accent card -->
+          <div class="hidden lg:flex absolute -top-11 -left-6 z-20 items-center gap-2.5 px-3.5 py-2.5 rounded-xl glass shadow-xl">
+            <span class="w-9 h-9 rounded-lg bg-bad/15 flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-bad text-[20px]" style="font-variation-settings:'FILL' 1;">gpp_bad</span>
+            </span>
+            <div><div class="font-mono text-label-caps text-ink-mute">FABRICATION DETECTED</div><div class="text-sm text-white font-medium">2 references flagged</div></div>
+          </div>
+          <!-- main panel -->
+          <div class="rounded-2xl glass overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-white/[0.02]">
+              <div class="flex gap-2">
+                <div class="w-3 h-3 rounded-full bg-bad/70"></div>
+                <div class="w-3 h-3 rounded-full bg-warn/70"></div>
+                <div class="w-3 h-3 rounded-full bg-ok/70"></div>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-bg/60 border border-border-subtle">
+                <span class="material-symbols-outlined text-[13px] text-ok" style="font-variation-settings:'FILL' 1;">lock</span>
+                <span class="font-mono text-[11px] text-ink-mute">app.ref-check.ai/analyze</span>
+              </div>
+              <div class="w-10"></div>
+            </div>
+            <div class="relative p-5 md:p-6 overflow-hidden">
+              <div class="scanline"></div>
+              <div class="flex justify-between items-start mb-5">
+                <div>
+                  <div class="font-mono text-label-caps text-ink-mute">ANALYSIS REPORT</div>
+                  <div class="font-display text-lg text-white mt-1">manuscript_final.docx</div>
+                </div>
+                <div class="text-right">
+                  <div class="font-display text-3xl gradient-text leading-none">86</div>
+                  <div class="font-mono text-[10px] text-ink-mute mt-1">INTEGRITY</div>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-2 mb-5">
+                <div class="px-3 py-2 rounded-lg bg-ok/10 border border-ok/20"><div class="font-display text-lg text-ok leading-none">38</div><div class="font-mono text-[10px] text-ink-mute mt-1">VERIFIED</div></div>
+                <div class="px-3 py-2 rounded-lg bg-warn/10 border border-warn/20"><div class="font-display text-lg text-warn leading-none">4</div><div class="font-mono text-[10px] text-ink-mute mt-1">REVIEW</div></div>
+                <div class="px-3 py-2 rounded-lg bg-bad/10 border border-bad/20"><div class="font-display text-lg text-bad leading-none">2</div><div class="font-mono text-[10px] text-ink-mute mt-1">FLAGGED</div></div>
+              </div>
+              <div class="space-y-2.5">
+                <div class="flex items-center gap-3 p-2.5 rounded-lg bg-ok/5 border border-ok/15">
+                  <span class="material-symbols-outlined text-ok text-[20px]" style="font-variation-settings:'FILL' 1;">check_circle</span>
+                  <div class="flex-grow min-w-0"><div class="text-sm text-white truncate">Smith, J. A., &amp; Brown, L. (2020). The impact of...</div><div class="font-mono text-[11px] text-ink-mute">CrossRef · DOI matched · supported</div></div>
+                  <span class="font-mono text-[10px] text-ok shrink-0">REAL</span>
+                </div>
+                <div class="flex items-center gap-3 p-2.5 rounded-lg bg-warn/5 border border-warn/15">
+                  <span class="material-symbols-outlined text-warn text-[20px]" style="font-variation-settings:'FILL' 1;">warning</span>
+                  <div class="flex-grow min-w-0"><div class="text-sm text-white truncate">Johnson, M. (2019). A study on cellular...</div><div class="font-mono text-[11px] text-ink-mute">Exists · some claims unsupported</div></div>
+                  <span class="font-mono text-[10px] text-warn shrink-0">PARTIAL</span>
+                </div>
+                <div class="flex items-center gap-3 p-2.5 rounded-lg bg-bad/5 border border-bad/15">
+                  <span class="material-symbols-outlined text-bad text-[20px]" style="font-variation-settings:'FILL' 1;">cancel</span>
+                  <div class="flex-grow min-w-0"><div class="text-sm text-white truncate">Doe, R. (2021). Amazing results of nano<span class="blink text-accent">|</span></div><div class="font-mono text-[11px] text-ink-mute">No match in CrossRef or PubMed</div></div>
+                  <span class="font-mono text-[10px] text-bad shrink-0">FAKE</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- floating accent card 2 -->
+          <div class="hidden lg:flex absolute -bottom-11 -right-4 z-20 items-center gap-2.5 px-3.5 py-2.5 rounded-xl glass shadow-xl">
+            <span class="w-9 h-9 rounded-lg bg-ok/15 flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-ok text-[20px]" style="font-variation-settings:'FILL' 1;">bolt</span>
+            </span>
+            <div><div class="font-mono text-label-caps text-ink-mute">SCAN COMPLETE</div><div class="text-sm text-white font-medium">44 refs · 38s</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trusted-by marquee -->
+  <section class="py-10 border-y border-border-subtle bg-white/[0.015]">
+    <p class="text-center font-mono text-label-caps text-ink-mute mb-6">CROSS-REFERENCED AGAINST TRUSTED ACADEMIC SOURCES</p>
+    <div class="marquee-mask overflow-hidden">
+      <div class="marquee-track items-center text-ink-mute">
+        <div class="flex gap-14 items-center pr-14 font-display text-2xl font-medium">
+          <span class="whitespace-nowrap">CrossRef</span><span class="whitespace-nowrap">PubMed</span><span class="whitespace-nowrap">DOI.org</span><span class="whitespace-nowrap">ORCID</span><span class="whitespace-nowrap">Semantic Scholar</span><span class="whitespace-nowrap">OpenAlex</span>
+        </div>
+        <div class="flex gap-14 items-center pr-14 font-display text-2xl font-medium" aria-hidden="true">
+          <span class="whitespace-nowrap">CrossRef</span><span class="whitespace-nowrap">PubMed</span><span class="whitespace-nowrap">DOI.org</span><span class="whitespace-nowrap">ORCID</span><span class="whitespace-nowrap">Semantic Scholar</span><span class="whitespace-nowrap">OpenAlex</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bento: Capabilities -->
+  <section class="py-24 relative" id="features">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div data-reveal class="text-center mb-14">
+        <div class="font-mono text-label-caps text-accent mb-3">CAPABILITIES</div>
+        <h2 class="font-display text-headline text-white mb-4">Built for academic-grade rigor</h2>
+        <p class="text-body-md text-ink-soft max-w-2xl mx-auto">Everything you need to separate real, supported citations from fabricated ones.</p>
+      </div>
+      <div data-stagger class="grid grid-cols-1 md:grid-cols-6 auto-rows-[minmax(180px,auto)] gap-4">
+        <!-- large feature -->
+        <div class="md:col-span-4 md:row-span-2 glass beam rounded-2xl p-7 relative overflow-hidden lift flex flex-col justify-between">
+          <div class="absolute -top-10 -right-10 w-48 h-48 bg-accent/15 blur-[70px] rounded-full"></div>
+          <div>
+            <span class="w-11 h-11 rounded-xl bg-accent/15 flex items-center justify-center mb-5"><span class="material-symbols-outlined text-accent" style="font-variation-settings:'FILL' 1;">neurology</span></span>
+            <h3 class="font-display text-xl text-white mb-2">AI claim-level support checking</h3>
+            <p class="text-body-md text-ink-soft max-w-md">Goes beyond "does it exist." Our model reads the cited PDF and confirms the source actually backs the specific claim it's attached to — catching misrepresented and over-stated citations.</p>
+          </div>
+          <div class="flex flex-wrap gap-2 mt-6">
+            <span class="font-mono text-[11px] text-ink-soft px-2.5 py-1 rounded-full bg-white/5 border border-border-subtle">Semantic matching</span>
+            <span class="font-mono text-[11px] text-ink-soft px-2.5 py-1 rounded-full bg-white/5 border border-border-subtle">Quote alignment</span>
+            <span class="font-mono text-[11px] text-ink-soft px-2.5 py-1 rounded-full bg-white/5 border border-border-subtle">Context window</span>
+          </div>
+        </div>
+        <div class="md:col-span-2 glass beam rounded-2xl p-7 relative overflow-hidden lift">
+          <span class="w-11 h-11 rounded-xl bg-accent-2/15 flex items-center justify-center mb-4"><span class="material-symbols-outlined text-accent-2" style="font-variation-settings:'FILL' 1;">database</span></span>
+          <h3 class="font-display text-lg text-white mb-1.5">Dual-database lookup</h3>
+          <p class="text-sm text-ink-soft">Cross-checks every reference against CrossRef and PubMed for an authoritative existence verdict.</p>
+        </div>
+        <div class="md:col-span-2 glass beam rounded-2xl p-7 relative overflow-hidden lift">
+          <span class="w-11 h-11 rounded-xl bg-accent-3/15 flex items-center justify-center mb-4"><span class="material-symbols-outlined text-accent-3" style="font-variation-settings:'FILL' 1;">bolt</span></span>
+          <h3 class="font-display text-lg text-white mb-1.5">Sub-minute scans</h3>
+          <p class="text-sm text-ink-soft">A full manuscript of 40+ references is analyzed and scored in under a minute.</p>
+        </div>
+        <div class="md:col-span-3 glass beam rounded-2xl p-7 relative overflow-hidden lift">
+          <span class="w-11 h-11 rounded-xl bg-ok/15 flex items-center justify-center mb-4"><span class="material-symbols-outlined text-ok" style="font-variation-settings:'FILL' 1;">summarize</span></span>
+          <h3 class="font-display text-lg text-white mb-1.5">Color-coded, exportable reports</h3>
+          <p class="text-sm text-ink-soft">Every reference scored Good / Check / Problem, with source evidence and an exportable integrity report.</p>
+        </div>
+        <div class="md:col-span-3 glass beam rounded-2xl p-7 relative overflow-hidden lift">
+          <span class="w-11 h-11 rounded-xl bg-warn/15 flex items-center justify-center mb-4"><span class="material-symbols-outlined text-warn" style="font-variation-settings:'FILL' 1;">lock</span></span>
+          <h3 class="font-display text-lg text-white mb-1.5">Private by default</h3>
+          <p class="text-sm text-ink-soft">Your manuscripts are processed securely and never used to train models or shared with third parties.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="py-24 relative bg-white/[0.012]" id="how-it-works">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div data-reveal class="text-center mb-16">
+        <div class="font-mono text-label-caps text-accent mb-3">THE PIPELINE</div>
+        <h2 class="font-display text-headline text-white mb-4">From upload to verdict in five steps</h2>
+        <p class="text-body-md text-ink-soft max-w-2xl mx-auto">A smart pipeline that verifies every reference in minutes — not days.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-10 items-center">
+        <div class="md:col-span-5 md:col-start-2 relative">
+          <div class="absolute left-6 top-10 bottom-10 w-px bg-gradient-to-b from-accent/50 via-border-subtle to-accent-3/40"></div>
+          <div data-stagger class="space-y-9 relative">
+            <div class="flex gap-5 group">
+              <div class="relative z-10 w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 group-hover:border-accent/60 transition-colors">
+                <span class="material-symbols-outlined text-accent" style="font-variation-settings:'FILL' 1;">cloud_upload</span>
+              </div>
+              <div><h3 class="text-body-lg font-semibold text-white mb-1">Upload</h3><p class="text-body-md text-ink-soft">Drop in your Word (.docx) manuscript and any full-text PDFs of the cited papers.</p></div>
+            </div>
+            <div class="flex gap-5 group">
+              <div class="relative z-10 w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 group-hover:border-accent/60 transition-colors">
+                <span class="material-symbols-outlined text-accent" style="font-variation-settings:'FILL' 1;">list_alt</span>
+              </div>
+              <div><h3 class="text-body-lg font-semibold text-white mb-1">Extract</h3><p class="text-body-md text-ink-soft">It locates the References section and pulls out every individual citation automatically.</p></div>
+            </div>
+            <div class="flex gap-5 group">
+              <div class="relative z-10 w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 group-hover:border-accent-2/60 transition-colors">
+                <span class="material-symbols-outlined text-accent-2" style="font-variation-settings:'FILL' 1;">shield</span>
+              </div>
+              <div><h3 class="text-body-lg font-semibold text-white mb-1">Verify existence</h3><p class="text-body-md text-ink-soft">Each reference is checked against CrossRef &amp; PubMed to confirm it's a real publication.</p></div>
+            </div>
+            <div class="flex gap-5 group">
+              <div class="relative z-10 w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 group-hover:border-accent-2/60 transition-colors">
+                <span class="material-symbols-outlined text-accent-2" style="font-variation-settings:'FILL' 1;">memory</span>
+              </div>
+              <div><h3 class="text-body-lg font-semibold text-white mb-1">Check support (AI)</h3><p class="text-body-md text-ink-soft">AI reads the manuscript and the source PDFs to confirm each citation is actually supported.</p></div>
+            </div>
+            <div class="flex gap-5 group">
+              <div class="relative z-10 w-12 h-12 rounded-xl glass flex items-center justify-center shrink-0 group-hover:border-accent-3/60 transition-colors">
+                <span class="material-symbols-outlined text-accent-3" style="font-variation-settings:'FILL' 1;">bar_chart</span>
+              </div>
+              <div><h3 class="text-body-lg font-semibold text-white mb-1">Get results</h3><p class="text-body-md text-ink-soft">You receive a clean, color-coded report you can trust and export.</p></div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal="right" class="md:col-span-5 md:col-start-7 hidden md:block">
+          <div class="glass beam rounded-2xl p-8 relative overflow-hidden lift">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-accent/15 blur-[60px] rounded-full"></div>
+            <div class="flex items-center justify-between border-b border-border-subtle pb-4 mb-6">
+              <div class="font-mono text-label-caps text-ink-soft">PROCESSING<span class="blink">_</span></div>
+              <div class="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin"></div>
+            </div>
+            <div class="space-y-4">
+              <div class="flex items-center gap-3"><span class="material-symbols-outlined text-[18px] text-ok" style="font-variation-settings:'FILL' 1;">check_circle</span><div class="h-3 bg-surface-3 rounded w-3/4"></div></div>
+              <div class="flex items-center gap-3"><span class="material-symbols-outlined text-[18px] text-ok" style="font-variation-settings:'FILL' 1;">check_circle</span><div class="h-3 bg-surface-3 rounded w-1/2"></div></div>
+              <div class="flex items-center gap-3"><div class="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin"></div><div class="h-3 bg-surface-3 rounded w-5/6"></div></div>
+              <div class="mt-8 pt-6 border-t border-border-subtle">
+                <div class="flex justify-between items-center mb-2"><span class="font-mono text-mono-sm text-ink-mute">Database cross-reference</span><span class="font-mono text-mono-sm text-accent" data-bar-label>0%</span></div>
+                <div class="h-2 bg-bg rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-accent to-accent-3 rounded-full transition-all duration-[1500ms] ease-out" data-bar style="width:0%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platform preview (interactive) -->
+  <section class="py-24 relative" id="platform">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div data-reveal class="text-center mb-14">
+        <div class="font-mono text-label-caps text-accent mb-3">INSIDE THE PLATFORM</div>
+        <h2 class="font-display text-headline text-white mb-4">A look inside the workspace</h2>
+        <p class="text-body-md text-ink-soft max-w-2xl mx-auto">Click through a live preview of how you verify, review, and export every citation.</p>
+      </div>
+      <div data-reveal="scale" class="flex items-center justify-center">
+        <div id="platform-card" class="beam group relative w-full max-w-xl overflow-hidden rounded-3xl border border-border-subtle bg-surface shadow-2xl transition-all duration-500 hover:-translate-y-1">
+          <div class="p-5 sm:p-6 space-y-1.5 relative z-10">
+            <h3 class="font-mono text-label-caps text-ink-mute">REF/CHECK PLATFORM</h3>
+            <p class="text-lg sm:text-2xl text-white font-medium leading-snug max-w-[480px]">High-precision citation verification and review, all in one workspace.</p>
+          </div>
+
+          <div class="relative w-full h-[300px] sm:h-[330px] overflow-hidden">
+            <div class="absolute top-16 left-16 w-full h-full bg-surface-2 rounded-3xl border border-border-subtle opacity-70"></div>
+            <div class="absolute top-8 left-20 sm:left-24 w-full h-full bg-bg rounded-tl-3xl shadow-xl flex flex-col overflow-hidden ring-4 ring-border-subtle">
+              <!-- window chrome -->
+              <div class="px-5 py-3 rounded-tl-3xl border-b border-border-subtle flex items-center relative shrink-0">
+                <div class="flex gap-1.5">
+                  <div class="w-2 h-2 rounded-full bg-white/15"></div>
+                  <div class="w-2 h-2 rounded-full bg-white/15"></div>
+                  <div class="w-2 h-2 rounded-full bg-white/15"></div>
+                </div>
+                <div class="absolute left-1/2 -translate-x-1/2"><span class="font-mono text-[10px] text-ink-mute uppercase tracking-wider">Workspace</span></div>
+              </div>
+
+              <div class="flex flex-1 overflow-hidden">
+                <!-- sidebar -->
+                <div class="w-32 sm:w-36 border-r border-border-subtle p-2 flex flex-col gap-1 pt-4 shrink-0">
+                  <button data-tab="dashboard" class="ptab active relative flex items-center gap-1.5 p-2 rounded-xl text-xs transition-colors cursor-pointer">
+                    <span class="ptab-bar"></span>
+                    <span class="material-symbols-outlined text-[16px] relative z-10 shrink-0">space_dashboard</span>
+                    <span class="truncate relative z-10 font-medium">Dashboard</span>
+                  </button>
+                  <button data-tab="references" class="ptab relative flex items-center gap-1.5 p-2 rounded-xl text-xs transition-colors cursor-pointer">
+                    <span class="ptab-bar"></span>
+                    <span class="material-symbols-outlined text-[16px] relative z-10 shrink-0">format_list_bulleted</span>
+                    <span class="truncate relative z-10 font-medium">References</span>
+                    <span class="ml-auto text-[8px] leading-none py-0.5 px-1 rounded-md tabular-nums relative z-10 bg-white/10 text-ink-soft border border-border-subtle">44</span>
+                  </button>
+                  <button data-tab="sources" class="ptab relative flex items-center gap-1.5 p-2 rounded-xl text-xs transition-colors cursor-pointer">
+                    <span class="ptab-bar"></span>
+                    <span class="material-symbols-outlined text-[16px] relative z-10 shrink-0">database</span>
+                    <span class="truncate relative z-10 font-medium">Sources</span>
+                    <span class="ml-auto text-[8px] leading-none py-0.5 px-1 rounded-md tabular-nums relative z-10 bg-white/10 text-ink-soft border border-border-subtle">4</span>
+                  </button>
+                  <button data-tab="reports" class="ptab relative flex items-center gap-1.5 p-2 rounded-xl text-xs transition-colors cursor-pointer">
+                    <span class="ptab-bar"></span>
+                    <span class="material-symbols-outlined text-[16px] relative z-10 shrink-0">summarize</span>
+                    <span class="truncate relative z-10 font-medium">Reports</span>
+                  </button>
+                </div>
+
+                <!-- content -->
+                <div class="flex-1 bg-bg p-4 sm:p-5 pt-4 flex flex-col gap-3 overflow-hidden relative">
+                  <header class="flex flex-col gap-0.5 shrink-0">
+                    <h4 data-ph-header class="font-mono text-[11px] font-semibold text-white tracking-tight uppercase opacity-70">ANALYSIS OVERVIEW</h4>
+                    <p data-ph-desc class="text-[10px] text-ink-mute leading-tight">Live summary of your verification runs.</p>
+                  </header>
+
+                  <div class="flex-1 overflow-hidden relative">
+                    <!-- Dashboard -->
+                    <div data-panel="dashboard" class="panel-anim flex flex-col gap-2.5">
+                      <div class="relative p-3 rounded-xl border border-border-subtle bg-gradient-to-br from-bg to-surface-2/40 overflow-hidden">
+                        <div class="flex flex-col gap-1.5 relative z-10">
+                          <div class="flex items-center justify-between">
+                            <span class="text-[9px] font-medium text-ink-mute">Citation Integrity</span>
+                            <span class="material-symbols-outlined text-[12px] text-ok">trending_up</span>
+                          </div>
+                          <span class="text-xl font-medium tracking-tight text-white">94.2%</span>
+                          <div class="w-full h-1 bg-surface-3 rounded-full overflow-hidden mt-0.5"><div class="h-full rounded-full bg-gradient-to-r from-white to-white/50" style="width:94.2%"></div></div>
+                          <span class="text-[9px] text-ink-mute">Across 1,284 verified references</span>
+                        </div>
+                        <span class="material-symbols-outlined absolute -right-2 -bottom-3 text-[64px] text-white opacity-[0.04] rotate-12">bar_chart</span>
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <div class="p-2.5 rounded-xl border border-border-subtle bg-white/[0.02] flex items-center justify-between">
+                          <div class="flex flex-col"><span class="text-[11px] font-medium text-white">1,284</span><span class="text-[8px] text-ink-mute uppercase font-medium">References</span></div>
+                          <span class="material-symbols-outlined text-[14px] text-ink-mute opacity-50">format_list_bulleted</span>
+                        </div>
+                        <div class="p-2.5 rounded-xl border border-border-subtle bg-white/[0.02] flex items-center justify-between">
+                          <div class="flex flex-col"><span class="text-[11px] font-medium text-white">42</span><span class="text-[8px] text-ink-mute uppercase font-medium">Manuscripts</span></div>
+                          <span class="material-symbols-outlined text-[14px] text-ink-mute opacity-50">description</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- References -->
+                    <div data-panel="references" class="flex flex-col" style="display:none">
+                      <div class="rounded-xl border border-border-subtle overflow-hidden flex flex-col bg-white/[0.02]">
+                        <div class="bg-white/[0.03] px-3 py-2 border-b border-border-subtle flex items-center justify-between">
+                          <span class="text-[9px] font-semibold text-ink-mute uppercase tracking-wider">Latest manuscript</span>
+                          <div class="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md bg-bg border border-border-subtle"><span class="material-symbols-outlined text-[10px] text-ink-mute">search</span><span class="text-[8px] text-ink-mute font-medium">Search</span></div>
+                        </div>
+                        <div class="p-1 flex flex-col gap-0.5">
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                            <div class="w-6 h-6 rounded-full bg-surface-2 border border-border-subtle flex items-center justify-center relative shrink-0"><span class="material-symbols-outlined text-[12px] text-ink-mute">article</span><div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-bg bg-ok"></div></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">Smith, J. A. (2020)</span><span class="text-[8px] text-ink-mute truncate">CrossRef · DOI matched</span></div>
+                            <span class="text-[8px] font-mono text-ok shrink-0">VERIFIED</span>
+                          </div>
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                            <div class="w-6 h-6 rounded-full bg-surface-2 border border-border-subtle flex items-center justify-center relative shrink-0"><span class="material-symbols-outlined text-[12px] text-ink-mute">article</span><div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-bg bg-warn"></div></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">Johnson, M. (2019)</span><span class="text-[8px] text-ink-mute truncate">Some claims unsupported</span></div>
+                            <span class="text-[8px] font-mono text-warn shrink-0">REVIEW</span>
+                          </div>
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                            <div class="w-6 h-6 rounded-full bg-surface-2 border border-border-subtle flex items-center justify-center relative shrink-0"><span class="material-symbols-outlined text-[12px] text-ink-mute">article</span><div class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-bg bg-bad"></div></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">Doe, R. (2021)</span><span class="text-[8px] text-ink-mute truncate">No database match</span></div>
+                            <span class="text-[8px] font-mono text-bad shrink-0">FLAGGED</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Sources -->
+                    <div data-panel="sources" class="grid grid-cols-2 gap-2 content-start" style="display:none">
+                      <div class="p-3 rounded-xl border border-border-subtle bg-white/[0.02] flex flex-col gap-2">
+                        <div class="flex items-center justify-between"><span class="material-symbols-outlined text-[16px] text-white">database</span><span class="w-1.5 h-1.5 rounded-full bg-ok shrink-0"></span></div>
+                        <div><div class="text-[11px] font-medium text-white">CrossRef</div><div class="text-[8px] text-ink-mute uppercase">Connected · 148M</div></div>
+                      </div>
+                      <div class="p-3 rounded-xl border border-border-subtle bg-white/[0.02] flex flex-col gap-2">
+                        <div class="flex items-center justify-between"><span class="material-symbols-outlined text-[16px] text-white">clinical_notes</span><span class="w-1.5 h-1.5 rounded-full bg-ok shrink-0"></span></div>
+                        <div><div class="text-[11px] font-medium text-white">PubMed</div><div class="text-[8px] text-ink-mute uppercase">Connected · 36M</div></div>
+                      </div>
+                      <div class="p-3 rounded-xl border border-border-subtle bg-white/[0.02] flex flex-col gap-2">
+                        <div class="flex items-center justify-between"><span class="material-symbols-outlined text-[16px] text-white">hub</span><span class="w-1.5 h-1.5 rounded-full bg-ok shrink-0"></span></div>
+                        <div><div class="text-[11px] font-medium text-white">OpenAlex</div><div class="text-[8px] text-ink-mute uppercase">Connected · 250M</div></div>
+                      </div>
+                      <div class="p-3 rounded-xl border border-border-subtle bg-white/[0.02] flex flex-col gap-2">
+                        <div class="flex items-center justify-between"><span class="material-symbols-outlined text-[16px] text-white">badge</span><span class="w-1.5 h-1.5 rounded-full bg-ok shrink-0"></span></div>
+                        <div><div class="text-[11px] font-medium text-white">ORCID</div><div class="text-[8px] text-ink-mute uppercase">Connected · authors</div></div>
+                      </div>
+                    </div>
+
+                    <!-- Reports -->
+                    <div data-panel="reports" class="flex flex-col" style="display:none">
+                      <div class="rounded-xl border border-border-subtle flex flex-col bg-white/[0.02] overflow-hidden">
+                        <div class="bg-white/[0.03] px-3 py-2 border-b border-border-subtle flex items-center justify-between"><span class="text-[9px] font-semibold text-ink-mute uppercase tracking-wider">Exports &amp; archives</span><span class="material-symbols-outlined text-[12px] text-ink-mute opacity-40">folder_open</span></div>
+                        <div class="p-1 flex flex-col">
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer group/file">
+                            <div class="w-6 h-6 rounded-md bg-surface-2 border border-border-subtle flex items-center justify-center text-ink-mute shrink-0"><span class="material-symbols-outlined text-[12px]">picture_as_pdf</span></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">integrity_report.pdf</span><span class="text-[8px] text-ink-mute uppercase">2.4 MB • PDF</span></div>
+                            <span class="material-symbols-outlined text-[12px] text-ink-mute opacity-0 group-hover/file:opacity-100 transition-opacity shrink-0">north_east</span>
+                          </div>
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer group/file">
+                            <div class="w-6 h-6 rounded-md bg-surface-2 border border-border-subtle flex items-center justify-center text-ink-mute shrink-0"><span class="material-symbols-outlined text-[12px]">description</span></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">manuscript_final.docx</span><span class="text-[8px] text-ink-mute uppercase">1.1 MB • DOCX</span></div>
+                            <span class="material-symbols-outlined text-[12px] text-ink-mute opacity-0 group-hover/file:opacity-100 transition-opacity shrink-0">north_east</span>
+                          </div>
+                          <div class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer group/file">
+                            <div class="w-6 h-6 rounded-md bg-surface-2 border border-border-subtle flex items-center justify-center text-ink-mute shrink-0"><span class="material-symbols-outlined text-[12px]">table_chart</span></div>
+                            <div class="flex flex-col min-w-0 flex-1"><span class="text-[10px] font-medium text-white truncate">citations_export.csv</span><span class="text-[8px] text-ink-mute uppercase">48 KB • CSV</span></div>
+                            <span class="material-symbols-outlined text-[12px] text-ink-mute opacity-0 group-hover/file:opacity-100 transition-opacity shrink-0">north_east</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-bg to-transparent pointer-events-none z-20"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Verification table -->
+  <section class="py-24 relative bg-white/[0.012]" id="verification">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div data-reveal class="text-center mb-12">
+        <div class="font-mono text-label-caps text-accent mb-3">THE OUTPUT</div>
+        <h2 class="font-display text-headline text-white mb-4">What the results look like</h2>
+        <p class="text-body-md text-ink-soft">Green, amber, or red — clear at a glance.</p>
+      </div>
+      <div data-reveal="scale" class="glass beam rounded-2xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-white/[0.03] border-b border-border-subtle">
+                <th class="py-4 px-6 font-mono text-label-caps text-ink-mute">#</th>
+                <th class="py-4 px-6 font-mono text-label-caps text-ink-mute">REFERENCE (EXAMPLE)</th>
+                <th class="py-4 px-6 font-mono text-label-caps text-ink-mute">EXISTS?</th>
+                <th class="py-4 px-6 font-mono text-label-caps text-ink-mute">SUPPORTED?</th>
+                <th class="py-4 px-6 font-mono text-label-caps text-ink-mute">DETAILS</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border-subtle">
+              <tr class="hover:bg-white/[0.02] transition-colors">
+                <td class="py-4 px-6 font-mono text-mono-sm text-ink-mute">1</td>
+                <td class="py-4 px-6"><p class="text-body-md text-white">Smith, J. A., Brown, L. (2020). The impact of...</p><p class="font-mono text-mono-sm text-ink-mute mt-1">Journal of Science, 45(2), 123-135.</p></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ok/10 border border-ok/20"><span class="material-symbols-outlined text-[16px] text-ok" style="font-variation-settings:'FILL' 1;">check_circle</span><span class="font-mono text-label-caps text-ink">Found</span></div></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ok/10 border border-ok/20"><span class="material-symbols-outlined text-[16px] text-ok" style="font-variation-settings:'FILL' 1;">check_circle</span><span class="font-mono text-label-caps text-ink">Yes</span></div></td>
+                <td class="py-4 px-6 text-body-md text-ink-soft">Match found in CrossRef and supported in PDF</td>
+              </tr>
+              <tr class="hover:bg-white/[0.02] transition-colors">
+                <td class="py-4 px-6 font-mono text-mono-sm text-ink-mute">2</td>
+                <td class="py-4 px-6"><p class="text-body-md text-white">Johnson, M. (2019). A study on...</p><p class="font-mono text-mono-sm text-ink-mute mt-1">Biology Today, 12(1), 55-67.</p></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ok/10 border border-ok/20"><span class="material-symbols-outlined text-[16px] text-ok" style="font-variation-settings:'FILL' 1;">check_circle</span><span class="font-mono text-label-caps text-ink">Found</span></div></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-warn/10 border border-warn/20"><span class="material-symbols-outlined text-[16px] text-warn" style="font-variation-settings:'FILL' 1;">warning</span><span class="font-mono text-label-caps text-ink">Partial</span></div></td>
+                <td class="py-4 px-6 text-body-md text-ink-soft">Reference exists but some claims not supported</td>
+              </tr>
+              <tr class="hover:bg-white/[0.02] transition-colors">
+                <td class="py-4 px-6 font-mono text-mono-sm text-ink-mute">3</td>
+                <td class="py-4 px-6"><p class="text-body-md text-white">Doe, R. (2021). Amazing results of...</p><p class="font-mono text-mono-sm text-ink-mute mt-1">Advanced Research Letters, 8(3), 200-210.</p></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bad/10 border border-bad/20"><span class="material-symbols-outlined text-[16px] text-bad" style="font-variation-settings:'FILL' 1;">cancel</span><span class="font-mono text-label-caps text-ink">Not Found</span></div></td>
+                <td class="py-4 px-6"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bad/10 border border-bad/20"><span class="material-symbols-outlined text-[16px] text-bad" style="font-variation-settings:'FILL' 1;">cancel</span><span class="font-mono text-label-caps text-ink">No</span></div></td>
+                <td class="py-4 px-6 text-body-md text-ink-soft">Could not find this publication</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="bg-white/[0.02] border-t border-border-subtle p-4 flex flex-wrap gap-6 justify-center">
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-ok"></div><span class="font-mono text-mono-sm text-ink-mute"><span class="text-ink font-medium">Good</span> — real and supported</span></div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-warn"></div><span class="font-mono text-mono-sm text-ink-mute"><span class="text-ink font-medium">Check</span> — needs a closer look</span></div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-bad"></div><span class="font-mono text-mono-sm text-ink-mute"><span class="text-ink font-medium">Problem</span> — not found or unsupported</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bento: Impact & Audience -->
+  <section class="py-24" id="audience">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div data-reveal="left" class="glass beam rounded-2xl p-8 relative overflow-hidden lift">
+          <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-accent to-transparent"></div>
+          <h2 class="font-display text-2xl text-white mb-8 inline-flex items-center gap-2.5">
+            <span class="material-symbols-outlined text-accent">public</span> Why it matters
+          </h2>
+          <div class="space-y-6">
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent mt-0.5" style="font-variation-settings:'FILL' 1;">gpp_maybe</span><div><h4 class="text-body-lg font-semibold text-white">Fights misinformation</h4><p class="text-body-md text-ink-soft mt-1">Helps stop fabricated references from spreading through the literature.</p></div></div>
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent mt-0.5" style="font-variation-settings:'FILL' 1;">handshake</span><div><h4 class="text-body-lg font-semibold text-white">Supports honest research</h4><p class="text-body-md text-ink-soft mt-1">Encourages integrity and trust in science and scholarship.</p></div></div>
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent mt-0.5" style="font-variation-settings:'FILL' 1;">language</span><div><h4 class="text-body-lg font-semibold text-white">Makes an impact</h4><p class="text-body-md text-ink-soft mt-1">Universities, journals, and researchers all benefit.</p></div></div>
+          </div>
+        </div>
+        <div data-reveal="right" class="glass beam rounded-2xl p-8 relative overflow-hidden lift">
+          <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-accent-3 to-transparent"></div>
+          <h2 class="font-display text-2xl text-white mb-8 inline-flex items-center gap-2.5">
+            <span class="material-symbols-outlined text-accent-3">group</span> Who it's for
+          </h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent-3 mt-0.5" style="font-variation-settings:'FILL' 1;">school</span><div><h4 class="text-body-lg font-semibold text-white">Students</h4><p class="text-ink-soft mt-1 text-sm">Check your citations before you submit.</p></div></div>
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent-3 mt-0.5" style="font-variation-settings:'FILL' 1;">apps</span><div><h4 class="text-body-lg font-semibold text-white">Professors</h4><p class="text-ink-soft mt-1 text-sm">Help students keep references reliable.</p></div></div>
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent-3 mt-0.5" style="font-variation-settings:'FILL' 1;">science</span><div><h4 class="text-body-lg font-semibold text-white">Researchers</h4><p class="text-ink-soft mt-1 text-sm">Verify large numbers of citations fast.</p></div></div>
+            <div class="flex gap-4"><span class="material-symbols-outlined text-accent-3 mt-0.5" style="font-variation-settings:'FILL' 1;">auto_stories</span><div><h4 class="text-body-lg font-semibold text-white">Publishers</h4><p class="text-ink-soft mt-1 text-sm">Screen submissions for reference quality.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social proof -->
+  <section class="py-24 relative bg-white/[0.012]">
+    <div class="max-w-7xl mx-auto px-container-padding">
+      <div data-reveal class="text-center mb-14">
+        <div class="font-mono text-label-caps text-accent mb-3">TRUSTED BY RESEARCHERS</div>
+        <h2 class="font-display text-headline text-white">What early users say</h2>
+      </div>
+      <div data-stagger class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <figure class="glass beam rounded-2xl p-7 lift">
+          <div class="flex gap-0.5 mb-4 text-warn">
+            <span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span>
+          </div>
+          <blockquote class="text-body-md text-ink mb-6">"It caught two fabricated citations a co-author had pasted in from an AI draft. That alone saved us from a very awkward correction."</blockquote>
+          <figcaption class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/5 border border-border-subtle flex items-center justify-center font-display font-semibold text-ink">DR</span>
+            <div><div class="text-sm font-semibold text-white">Dr. Dana Reyes</div><div class="font-mono text-[11px] text-ink-mute">Molecular Biology, R1 University</div></div>
+          </figcaption>
+        </figure>
+        <figure class="glass beam rounded-2xl p-7 lift">
+          <div class="flex gap-0.5 mb-4 text-warn">
+            <span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span>
+          </div>
+          <blockquote class="text-body-md text-ink mb-6">"What used to be an afternoon of manually checking DOIs is now a 40-second upload. The claim-support check is the part I didn't know I needed."</blockquote>
+          <figcaption class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/5 border border-border-subtle flex items-center justify-center font-display font-semibold text-ink">AO</span>
+            <div><div class="text-sm font-semibold text-white">Amir Okafor</div><div class="font-mono text-[11px] text-ink-mute">PhD Candidate, Bioinformatics</div></div>
+          </figcaption>
+        </figure>
+        <figure class="glass beam rounded-2xl p-7 lift">
+          <div class="flex gap-0.5 mb-4 text-warn">
+            <span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star</span><span class="material-symbols-outlined text-[18px]" style="font-variation-settings:'FILL' 1;">star_half</span>
+          </div>
+          <blockquote class="text-body-md text-ink mb-6">"We piloted it as a first-pass screen on submissions. The color-coded report makes triage trivial for our editorial team."</blockquote>
+          <figcaption class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/5 border border-border-subtle flex items-center justify-center font-display font-semibold text-ink">SL</span>
+            <div><div class="text-sm font-semibold text-white">Sofia Lindqvist</div><div class="font-mono text-[11px] text-ink-mute">Managing Editor, Open Journal</div></div>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-28 relative overflow-hidden">
+    <div class="absolute inset-0 bg-grid z-0"></div>
+    <div class="aurora absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[340px] rounded-full bg-accent/18 blur-[140px]"></div>
+    <div data-reveal="scale" class="relative z-10 max-w-3xl mx-auto px-container-padding text-center">
+      <h2 class="font-display text-display-mobile md:text-display-lg text-white mb-4">Ready to trust your references?</h2>
+      <p class="text-body-lg text-ink-soft mb-9">Upload a manuscript and get a color-coded integrity report in under a minute.</p>
+      <a class="btn-primary inline-flex text-white text-body-md px-8 py-3.5 rounded-DEFAULT font-semibold transition-transform duration-200 active:scale-95 items-center justify-center gap-2" href="auth.html?mode=signup">
+        <span class="material-symbols-outlined">rocket_launch</span> Get Started Free
+        <span class="material-symbols-outlined text-[18px]">arrow_outward</span>
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer class="py-12 px-container-padding border-t border-border-subtle w-full relative z-10">
+  <div class="flex flex-col md:flex-row justify-between items-center gap-base max-w-7xl mx-auto">
+    <div class="flex flex-col items-center md:items-start gap-2 mb-6 md:mb-0">
+      <a class="font-display text-xl font-bold text-ink flex items-center gap-2.5" href="#hero">
+        <span class="w-7 h-7 rounded-lg bg-gradient-to-br from-white to-accent-2 flex items-center justify-center"><span class="material-symbols-outlined text-bg text-[18px]" style="font-variation-settings:'FILL' 1;">verified</span></span>
+        REF<span class="text-ink-mute font-normal">/</span>CHECK
+      </a>
+      <p class="font-mono text-label-caps text-ink-mute mt-2 text-center md:text-left">© 2026 REF/CHECK AI — The Intelligent Guardian of Academic Integrity.</p>
+    </div>
+    <div class="flex flex-wrap justify-center gap-6">
+      <a class="font-mono text-label-caps text-ink-mute hover:text-ink transition-colors" href="#">Privacy</a>
+      <a class="font-mono text-label-caps text-ink-mute hover:text-ink transition-colors" href="#">Terms</a>
+      <a class="font-mono text-label-caps text-ink-mute hover:text-ink transition-colors" href="#">Security</a>
+      <a class="font-mono text-label-caps text-ink-mute hover:text-ink transition-colors" href="#">Contact</a>
+    </div>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
