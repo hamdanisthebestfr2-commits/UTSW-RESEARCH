@@ -28,8 +28,8 @@
   // apply the saved theme before first paint (no flash). Obsidian (dark) is the default.
   (function(){ try {
     var fam = {dark:'dark', light:'light', rose:'light', sepia:'light', teal:'dark', indigo:'dark'};
-    var id = localStorage.getItem('refcheck-theme') || 'dark';
-    if (!(id in fam)) id = 'dark';
+    var id = localStorage.getItem('refcheck-theme') || 'teal';
+    if (!(id in fam)) id = 'teal';
     var el = document.documentElement;
     el.classList.remove('light','dark');
     el.classList.add(fam[id]);
@@ -637,7 +637,7 @@
       { id:'rose',   name:'Rose',      fam:'light', sw:['#fdf0f5','#3a1a2a','#ff6fae'] },
       { id:'sepia',  name:'Parchment', fam:'light', sw:['#f4eee2','#2e261c','#e0a23c'] }
     ];
-    function current(){ var id = localStorage.getItem('refcheck-theme') || 'dark'; return THEMES.some(function(t){return t.id===id;}) ? id : 'dark'; }
+    function current(){ var id = localStorage.getItem('refcheck-theme') || 'teal'; return THEMES.some(function(t){return t.id===id;}) ? id : 'teal'; }
     function apply(id){
       var t = THEMES.filter(function(x){return x.id===id;})[0] || THEMES[0];
       var el = document.documentElement;
