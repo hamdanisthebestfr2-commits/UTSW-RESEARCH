@@ -636,12 +636,16 @@
         nums.forEach((n) => { if (byNum[n] != null) ranges.push({ start: m.index, end: m.index + m[0].length, refId: byNum[n] }); });
       }
     } else {
-      // author-year: first-author surname within ~32 chars of its year
+      // author-year: first-author surname within ~40 chars of its year.
+      // NOTE: the gap must allow periods — otherwise the "." in "et al." blocks the match, so
+      // "Smith et al. (2020)" / "Garcia et al., 2021" (the overwhelmingly common forms) were all
+      // missed and never reached the citation-accuracy check. Only a bare "Surname 2020" matched.
+      // Cap + non-greedy keeps it to the nearest year so it stays local to the citation.
       (result.references || []).forEach((r) => {
         const surname = firstSurname(r.authors) || firstSurname(r.marker);
         const year = (String(r.year).match(/\d{4}/) || (r.marker || "").match(/\d{4}/) || [])[0];
         if (!surname || !year) return;
-        const re = new RegExp(escapeRe(surname) + "[^.\\n]{0,32}?" + year, "g");
+        const re = new RegExp(escapeRe(surname) + "[^\\n]{0,40}?" + year, "g");
         let m;
         while ((m = re.exec(body)) !== null) {
           ranges.push({ start: m.index, end: m.index + m[0].length, refId: r.id });
@@ -1852,6 +1856,36 @@
   function setEvStatus(msg) { const el = $("evidence-status"); if (el) el.textContent = msg; }
   function setEvBar(done, total) { const b = $("evidence-bar"); if (b) b.style.width = (total ? Math.round(100 * done / total) : 0) + "%"; }
 
+  // Fetch abstracts (no Gemini key needed) for cited references that don't have one yet, so they become
+  // checkable. Only refs that (a) are cited in the body, (b) exist in a database, (c) have no abstract and
+  // (d) have no uploaded source PDF are attempted. Runs a few at a time; results persist with the analysis.
+  async function fillMissingAbstracts() {
+    if (!currentResult || !window.RefCheckCore || typeof Core.fetchAbstract !== "function") return;
+    const citedIds = new Set(citationInstances.map((i) => i.refId));
+    const need = [...citedIds]
+      .map((id) => refById(id))
+      .filter((ref) => ref && ref.exists && !(ref.abstract && String(ref.abstract).trim())
+        && !sourcePapers.some((p) => p.refId === ref.id && p.text));
+    if (!need.length) return;
+    $("evidence-progress").classList.remove("hidden");
+    setEvBar(0, 1);
+    let got = 0, done = 0;
+    const CONC = 3;
+    let idx = 0;
+    async function worker() {
+      while (idx < need.length) {
+        const ref = need[idx++];
+        setEvStatus(`Fetching source abstracts… (${done}/${need.length})`);
+        try { const abs = await Core.fetchAbstract(ref); if (abs) { ref.abstract = abs; got++; } } catch (_) {}
+        done++;
+        setEvBar(done, need.length);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONC, need.length) }, worker));
+    if (got) { try { saveReferences(); } catch (_) {} }
+    setEvBar(0, 1);
+  }
+
   async function runEvidenceCheck() {
     if (evidenceRunning) return;
     if (!currentResult) return;
@@ -1861,6 +1895,11 @@
       openSettings(true);
       return;
     }
+    // On-demand abstract fill: any reference that IS cited in the text and exists in a database, but has
+    // no abstract yet and no uploaded PDF, gets one fetched now (OpenAlex/Europe PMC/CrossRef — no key).
+    // This is what turns "1 of 13" into "most of 13": abstracts missed during analysis are recovered here.
+    await fillMissingAbstracts();
+
     const all = checkableInstances();
     const todo = all.filter((inst) => !(citeResults[inst.id] && citeResults[inst.id].status === "done"));
     evTotal = all.length;

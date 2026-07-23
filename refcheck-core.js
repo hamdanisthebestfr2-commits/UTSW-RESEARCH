@@ -845,6 +845,15 @@ Also return:
     return hit;
   }
 
+  // Public, on-demand version: fetch an abstract for a reference at citation-accuracy time (no Gemini
+  // key needed — OpenAlex/Europe PMC/CrossRef are all CORS-open). Used to fill in refs whose abstract
+  // wasn't captured during analysis, so more citations become checkable instead of "no source".
+  async function fetchAbstract(ref) {
+    if (!ref) return "";
+    const out = await augmentAbstract({ exists: true, doi: extractDoi(ref), abstract: "" }, ref);
+    return out && out.abstract ? out.abstract : "";
+  }
+
   async function verifyExistence(ref) {
     let hit = null;
     const cr = await crossrefCheck(ref);
@@ -995,5 +1004,5 @@ Also return:
     }
   }
 
-  window.RefCheckCore = { getSettings, saveSettings, usageToday, detectModels, run };
+  window.RefCheckCore = { getSettings, saveSettings, usageToday, detectModels, run, fetchAbstract };
 })();
