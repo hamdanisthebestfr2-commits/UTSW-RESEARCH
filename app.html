@@ -25,12 +25,15 @@
   }}};
 </script>
 <script>
-  // apply the saved theme before first paint (no flash). Dark is the default.
+  // apply the saved theme before first paint (no flash). Obsidian (dark) is the default.
   (function(){ try {
+    var fam = {dark:'dark', light:'light', rose:'light', sepia:'light', teal:'dark', indigo:'dark'};
+    var id = localStorage.getItem('refcheck-theme') || 'dark';
+    if (!(id in fam)) id = 'dark';
     var el = document.documentElement;
-    var t = localStorage.getItem('refcheck-theme');
-    if (t === 'light') { el.classList.add('light'); el.classList.remove('dark'); }
-    else { el.classList.add('dark'); el.classList.remove('light'); }
+    el.classList.remove('light','dark');
+    el.classList.add(fam[id]);
+    el.classList.add('theme-' + id);
   } catch(e){} })();
 </script>
 <style>
@@ -48,15 +51,64 @@
     --glow-hue-base:16; --glow-hue-spread:14; --glow-core:32 100% 75%;
     --body-glow-1: rgba(255,255,255,0.06); --body-glow-2: rgba(190,200,215,0.05);
   }
+  /* LIGHT-FAMILY base (Daylight). Any light theme (rose/sepia) adds a theme-* class that only
+     re-tints the palette + --c-strong (solid dark ink accents) + --c-tint (translucent overlays). */
   html.light {
     --c-bg:247 247 250; --c-bg-soft:238 238 243; --c-surface:255 255 255; --c-surface-2:245 245 249; --c-surface-3:236 236 242;
     --c-ink:23 23 30; --c-ink-soft:74 74 86; --c-ink-mute:107 107 120;
     --c-accent:23 23 30; --c-accent-2:96 96 108;
     --c-ok:31 138 92; --c-warn:154 116 20; --c-bad:190 61 84;
     --c-border-subtle: rgba(15,15,25,0.12); --c-border-strong: rgba(15,15,25,0.22);
+    --c-strong:22 22 28; --c-tint:20 20 45;
     /* card cursor-glow: bright pink in light */
     --glow-hue-base:322; --glow-hue-spread:26; --glow-core:330 100% 72%;
     --body-glow-1: rgba(255,120,200,0.12); --body-glow-2: rgba(150,120,255,0.09);
+  }
+
+  /* ---- Rose — soft blush light ---- */
+  html.theme-rose {
+    --c-bg:253 244 248; --c-bg-soft:249 234 241; --c-surface:255 253 254; --c-surface-2:251 240 245; --c-surface-3:247 230 238;
+    --c-ink:48 26 37; --c-ink-soft:120 78 95; --c-ink-mute:160 112 131;
+    --c-accent:158 42 96; --c-accent-2:190 108 143;
+    --c-ok:32 138 96; --c-warn:160 110 24; --c-bad:203 52 100;
+    --c-border-subtle: rgba(150,40,92,0.15); --c-border-strong: rgba(150,40,92,0.26);
+    --c-strong:58 24 42; --c-tint:150 40 92;
+    --glow-hue-base:328; --glow-hue-spread:22; --glow-core:336 100% 74%;
+    --body-glow-1: rgba(255,140,200,0.16); --body-glow-2: rgba(255,175,150,0.10);
+  }
+
+  /* ---- Parchment — warm sepia light ---- */
+  html.theme-sepia {
+    --c-bg:244 238 226; --c-bg-soft:237 229 213; --c-surface:251 246 236; --c-surface-2:243 235 221; --c-surface-3:235 226 209;
+    --c-ink:46 38 28; --c-ink-soft:96 82 62; --c-ink-mute:134 118 94;
+    --c-accent:126 78 30; --c-accent-2:160 122 76;
+    --c-ok:52 128 82; --c-warn:158 112 22; --c-bad:180 74 58;
+    --c-border-subtle: rgba(92,66,28,0.16); --c-border-strong: rgba(92,66,28,0.28);
+    --c-strong:52 40 26; --c-tint:120 82 30;
+    --glow-hue-base:34; --glow-hue-spread:18; --glow-core:38 92% 60%;
+    --body-glow-1: rgba(224,168,72,0.16); --body-glow-2: rgba(200,120,60,0.10);
+  }
+
+  /* ---- Deep Teal — bluish-teal ocean (dark) ---- */
+  html.theme-teal {
+    --c-bg:8 20 24; --c-bg-soft:11 26 31; --c-surface:14 32 38; --c-surface-2:18 40 47; --c-surface-3:24 50 58;
+    --c-ink:224 244 243; --c-ink-soft:150 190 193; --c-ink-mute:112 152 158;
+    --c-accent:228 255 250; --c-accent-2:120 205 197;
+    --c-ok:110 214 178; --c-warn:224 194 122; --c-bad:232 138 150;
+    --c-border-subtle: rgba(150,232,225,0.10); --c-border-strong: rgba(150,232,225,0.19);
+    --glow-hue-base:172; --glow-hue-spread:20; --glow-core:178 88% 60%;
+    --body-glow-1: rgba(70,220,205,0.09); --body-glow-2: rgba(60,150,210,0.07);
+  }
+
+  /* ---- Nebula — deep indigo / violet (dark) ---- */
+  html.theme-indigo {
+    --c-bg:12 10 24; --c-bg-soft:16 14 32; --c-surface:22 19 42; --c-surface-2:28 24 52; --c-surface-3:37 31 66;
+    --c-ink:236 234 250; --c-ink-soft:181 176 212; --c-ink-mute:142 137 176;
+    --c-accent:246 244 255; --c-accent-2:176 165 224;
+    --c-ok:128 206 172; --c-warn:222 190 130; --c-bad:228 142 168;
+    --c-border-subtle: rgba(182,170,255,0.12); --c-border-strong: rgba(182,170,255,0.21);
+    --glow-hue-base:270; --glow-hue-spread:26; --glow-core:280 100% 76%;
+    --body-glow-1: rgba(150,110,255,0.13); --body-glow-2: rgba(90,120,255,0.09);
   }
 
   body { background: rgb(var(--c-bg)); }
@@ -158,42 +210,44 @@
     .scanline, .blink { animation: none; }
   }
 
-  /* ============ LIGHT THEME component overrides ============ */
+  /* ============ LIGHT-FAMILY component overrides ============ */
+  /* These apply to every light theme; they read --c-strong (solid dark ink) and --c-tint (the
+     translucent-overlay hue) so Daylight stays neutral navy while Rose/Parchment tint warm. */
   html.light .glass {
-    background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72));
+    background: linear-gradient(180deg, rgb(var(--c-surface) / 0.92), rgb(var(--c-surface) / 0.72));
     border-color: var(--c-border-subtle);
-    box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.9), 0 20px 50px -30px rgba(20,20,45,0.28); }
-  /* primary button becomes a dark pill (white would vanish on a light page); indigo→pink hover keeps */
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.9), 0 20px 50px -30px rgb(var(--c-tint) / 0.28); }
+  /* primary button becomes a solid dark/tinted pill (white would vanish on a light page); hover keeps */
   html.light .btn-primary { color:#fff;
-    background: linear-gradient(180deg,#1c1c24,#0f0f16); border-color: rgba(20,20,45,0.2);
-    box-shadow: 0 10px 26px -14px rgba(20,20,50,0.5), inset 0 1px 0 rgba(255,255,255,0.14); }
-  html.light .doc-surface { background: linear-gradient(180deg, rgba(10,10,25,0.02), transparent); }
+    background: rgb(var(--c-strong)); border-color: rgb(var(--c-tint) / 0.25);
+    box-shadow: 0 10px 26px -14px rgb(var(--c-tint) / 0.5), inset 0 1px 0 rgba(255,255,255,0.14); }
+  html.light .doc-surface { background: linear-gradient(180deg, rgb(var(--c-tint) / 0.02), transparent); }
   html.light input { color-scheme: light; }
-  html.light ::-webkit-scrollbar-thumb { background: rgba(20,20,45,0.18); }
+  html.light ::-webkit-scrollbar-thumb { background: rgb(var(--c-tint) / 0.18); }
   html.light a:focus-visible, html.light button:focus-visible,
-  html.light input:focus-visible, html.light label:focus-visible { outline-color:#14141a; }
-  html.light .fchip.active, html.light .ptab-mobile.active { color:#fff; background:#16161c; border-color:#16161c; }
-  html.light .ref-card.selected { border-color: rgba(20,20,45,0.4) !important; background: rgba(20,20,45,0.04); }
-  html.light .dropzone.dragover { border-color: rgba(20,20,45,0.5); background: rgba(20,20,45,0.04); }
+  html.light input:focus-visible, html.light label:focus-visible { outline-color: rgb(var(--c-strong)); }
+  html.light .fchip.active, html.light .ptab-mobile.active { color:#fff; background: rgb(var(--c-strong)); border-color: rgb(var(--c-strong)); }
+  html.light .ref-card.selected { border-color: rgb(var(--c-tint) / 0.4) !important; background: rgb(var(--c-tint) / 0.04); }
+  html.light .dropzone.dragover { border-color: rgb(var(--c-tint) / 0.5); background: rgb(var(--c-tint) / 0.05); }
   /* citation highlights need darker ink on a light page */
-  html.light mark.v-ok  { background: rgba(31,138,92,0.14);  border-bottom-color: rgba(31,138,92,0.8);  color:#0f5132; }
-  html.light mark.v-warn{ background: rgba(154,116,20,0.16); border-bottom-color: rgba(154,116,20,0.8); color:#6b4e07; }
-  html.light mark.v-bad { background: rgba(190,61,84,0.14);  border-bottom-color: rgba(190,61,84,0.85); color:#8a1c30; }
-  /* translucent-white utilities -> translucent-dark on a light canvas */
-  html.light .text-white { color:#16161c; }
-  html.light .bg-white\/5 { background-color: rgba(20,20,45,0.05) !important; }
-  html.light .bg-white\/8 { background-color: rgba(20,20,45,0.07) !important; }
-  html.light .bg-white\/\[0\.02\] { background-color: rgba(20,20,45,0.035) !important; }
-  html.light .bg-white\/\[0\.03\] { background-color: rgba(20,20,45,0.05) !important; }
-  html.light .border-white { border-color: rgba(20,20,45,0.5) !important; }
-  html.light .from-white { --tw-gradient-from:#1b1b24 var(--tw-gradient-from-position); --tw-gradient-to:rgb(27 27 36 / 0) var(--tw-gradient-to-position); --tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to); }
-  html.light .from-white\/25 { --tw-gradient-from:rgb(27 27 36 / 0.22) var(--tw-gradient-from-position); --tw-gradient-to:rgb(27 27 36 / 0) var(--tw-gradient-to-position); --tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to); }
-  html.light .to-white\/5 { --tw-gradient-to:rgb(27 27 36 / 0.06) var(--tw-gradient-to-position); }
+  html.light mark.v-ok  { background: rgb(var(--c-ok)  / 0.15); border-bottom-color: rgb(var(--c-ok)  / 0.85); color: rgb(var(--c-ok)); }
+  html.light mark.v-warn{ background: rgb(var(--c-warn)/ 0.17); border-bottom-color: rgb(var(--c-warn)/ 0.85); color: rgb(var(--c-warn)); }
+  html.light mark.v-bad { background: rgb(var(--c-bad) / 0.15); border-bottom-color: rgb(var(--c-bad) / 0.9);  color: rgb(var(--c-bad)); }
+  /* translucent-white utilities -> translucent-tint on a light canvas */
+  html.light .text-white { color: rgb(var(--c-strong)); }
+  html.light .bg-white\/5 { background-color: rgb(var(--c-tint) / 0.05) !important; }
+  html.light .bg-white\/8 { background-color: rgb(var(--c-tint) / 0.07) !important; }
+  html.light .bg-white\/\[0\.02\] { background-color: rgb(var(--c-tint) / 0.035) !important; }
+  html.light .bg-white\/\[0\.03\] { background-color: rgb(var(--c-tint) / 0.05) !important; }
+  html.light .border-white { border-color: rgb(var(--c-tint) / 0.5) !important; }
+  html.light .from-white { --tw-gradient-from: rgb(var(--c-strong)) var(--tw-gradient-from-position); --tw-gradient-to: rgb(var(--c-strong) / 0) var(--tw-gradient-to-position); --tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to); }
+  html.light .from-white\/25 { --tw-gradient-from: rgb(var(--c-strong) / 0.22) var(--tw-gradient-from-position); --tw-gradient-to: rgb(var(--c-strong) / 0) var(--tw-gradient-to-position); --tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to); }
+  html.light .to-white\/5 { --tw-gradient-to: rgb(var(--c-strong) / 0.06) var(--tw-gradient-to-position); }
   /* score ring track + gradient */
-  html.light circle[stroke="rgba(255,255,255,0.07)"] { stroke: rgba(20,20,45,0.10); }
-  html.light #g stop[offset="0"] { stop-color:#1b1b24; }
-  html.light #g stop[offset="1"] { stop-color:#8A8A93; }
-  html.light #sidebar-backdrop { background: rgba(20,20,45,0.35) !important; }
+  html.light circle[stroke="rgba(255,255,255,0.07)"] { stroke: rgb(var(--c-tint) / 0.12); }
+  html.light #g stop[offset="0"] { stop-color: rgb(var(--c-strong)); }
+  html.light #g stop[offset="1"] { stop-color: rgb(var(--c-accent-2)); }
+  html.light #sidebar-backdrop { background: rgb(var(--c-tint) / 0.35) !important; }
 </style>
 </head>
 <body class="bg-bg text-ink font-body antialiased min-h-screen">
@@ -221,9 +275,17 @@
           <button id="settings-btn" class="flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors px-2 py-1.5">
             <span class="material-symbols-outlined text-[18px]">settings</span><span class="hidden sm:inline">Settings</span>
           </button>
-          <button id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle light or dark mode" class="flex items-center justify-center text-ink-soft hover:text-ink transition-colors p-1.5 rounded-lg">
-            <span id="theme-icon" class="material-symbols-outlined text-[19px]">light_mode</span>
-          </button>
+          <div class="relative">
+            <button id="theme-btn" title="Theme" aria-label="Choose a theme" aria-haspopup="true" aria-expanded="false" class="flex items-center gap-1.5 text-ink-soft hover:text-ink transition-colors p-1.5 rounded-lg">
+              <span class="material-symbols-outlined text-[19px]">palette</span>
+              <span id="theme-name" class="hidden sm:inline text-xs"></span>
+              <span class="material-symbols-outlined text-[16px] -ml-0.5">expand_more</span>
+            </button>
+            <div id="theme-menu" class="hidden absolute right-0 mt-2 w-56 z-50 glass rounded-xl p-1.5 shadow-2xl border border-border-strong">
+              <div class="px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">Theme</div>
+              <div id="theme-options" class="flex flex-col gap-0.5"></div>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -325,11 +387,13 @@
                 <div class="flex items-center gap-2 mt-2 flex-wrap">
                   <button id="detect-models" class="glass px-2.5 py-1.5 rounded-md text-[11px] text-ink hover:border-border-strong inline-flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">search</span>Detect available models</button>
                   <select id="set-model" class="bg-surface-2 border border-border-subtle rounded-md text-[11px] text-ink px-2 py-1.5">
-                    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                    <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (recommended — higher free limit)</option>
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (highest free limit)</option>
+                    <option value="gemini-3.5-flash">gemini-3.5-flash (best quality)</option>
+                    <option value="gemini-3.6-flash">gemini-3.6-flash (newest)</option>
                   </select>
                 </div>
-                <div id="detect-status" class="text-[11px] text-ink-mute mt-1.5">Get a free key at <span class="text-ink-soft">aistudio.google.com/apikey</span>.</div>
+                <div id="detect-status" class="text-[11px] text-ink-mute mt-1.5">Get a free key at <span class="text-ink-soft">aistudio.google.com/apikey</span>. Hitting rate limits? Pick a <b>-lite</b> model — its free tier allows more requests/minute. Click <b>Detect available models</b> to load exactly what your key supports. The app also auto-waits and retries on a limit.</div>
               </div>
               <div>
                 <label class="block text-[12px] text-white font-medium mb-1">Daily check limit <span class="text-ink-mute font-normal">(safety stop)</span></label>
@@ -516,6 +580,39 @@
               <div id="src-list" class="flex flex-col gap-1.5 mt-3"></div>
             </div>
           </div>
+
+          <!-- CHECK CITATION ACCURACY + EVIDENCE TABLE (Phase 4) -->
+          <div id="evidence-section" data-reveal class="glass rounded-2xl mt-5 p-5 sm:p-6">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div class="min-w-0">
+                <div class="font-mono text-[11px] text-ink-mute uppercase tracking-wider mb-1">Phase 4</div>
+                <h2 class="font-display text-lg sm:text-xl text-white">Check citation accuracy</h2>
+                <p class="text-sm text-ink-soft mt-1 max-w-2xl">Compare every in-text claim against its source. Where you uploaded a PDF, the AI reads the full paper; everywhere else it uses the reference's abstract from CrossRef / OpenAlex. Source-PDF results already run are folded in. Paywalled sources with no readable text are recorded as un-checkable.</p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button id="evidence-run" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5"><span class="material-symbols-outlined text-[18px]">fact_check</span>Run check</button>
+                <button id="evidence-stop" class="hidden glass-liquid px-3 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 text-ink"><span class="material-symbols-outlined text-[18px]">stop</span>Stop</button>
+              </div>
+            </div>
+
+            <!-- progress -->
+            <div id="evidence-progress" class="hidden mt-4">
+              <div class="h-2 bg-bg rounded-full overflow-hidden border border-border-subtle"><div id="evidence-bar" class="h-full bg-gradient-to-r from-ok/70 to-ok rounded-full transition-all duration-300" style="width:0%"></div></div>
+              <div id="evidence-status" class="text-[12px] text-ink-soft mt-2"></div>
+            </div>
+
+            <!-- summary chips -->
+            <div id="evidence-summary" class="hidden mt-3 flex items-center gap-2 flex-wrap"></div>
+
+            <!-- table -->
+            <p id="evidence-empty" class="text-sm text-ink-mute text-center py-8">Run the check to build the evidence table — one row per citation, with the claim, the source's own words, and a verdict.</p>
+            <div id="evidence-wrap" class="hidden mt-4 overflow-x-auto">
+              <table id="evidence-table" class="w-full text-left border-collapse text-[12.5px] align-top"></table>
+            </div>
+            <div class="mt-3">
+              <button id="evidence-export" class="hidden text-[11px] text-ink-soft hover:text-ink inline-flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">download</span>Download evidence table (CSV)</button>
+            </div>
+          </div>
         </section>
 
       </main>
@@ -527,25 +624,67 @@
 
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="refcheck-core.js?v=1"></script>
+  <script src="refcheck-core.js?v=4"></script>
   <script>
-  // Light/dark toggle. The icon shows the mode you'll switch TO (sun in dark, moon in light).
+  // Theme picker. Each theme = a family class (light|dark, drives the component overrides) + a
+  // theme-<id> class (re-tints the CSS vars). Swatch = [background, ink, glow-accent].
   (function(){
-    function isLight(){ return document.documentElement.classList.contains('light'); }
-    function setIcon(){ var i=document.getElementById('theme-icon'); if(i) i.textContent = isLight() ? 'dark_mode' : 'light_mode'; }
-    function apply(light){
-      var el=document.documentElement;
-      el.classList.toggle('light', light); el.classList.toggle('dark', !light);
-      try{ localStorage.setItem('refcheck-theme', light ? 'light' : 'dark'); }catch(e){}
-      setIcon();
+    var THEMES = [
+      { id:'dark',   name:'Obsidian',  fam:'dark',  sw:['#0b0b0d','#f4f4f6','#ff9a3c'] },
+      { id:'teal',   name:'Deep Teal', fam:'dark',  sw:['#0a1a20','#e0f4f3','#3fd6c6'] },
+      { id:'indigo', name:'Nebula',    fam:'dark',  sw:['#0c0a18','#eceafa','#a06bff'] },
+      { id:'light',  name:'Daylight',  fam:'light', sw:['#f7f7fa','#17171e','#ff5fa2'] },
+      { id:'rose',   name:'Rose',      fam:'light', sw:['#fdf0f5','#3a1a2a','#ff6fae'] },
+      { id:'sepia',  name:'Parchment', fam:'light', sw:['#f4eee2','#2e261c','#e0a23c'] }
+    ];
+    function current(){ var id = localStorage.getItem('refcheck-theme') || 'dark'; return THEMES.some(function(t){return t.id===id;}) ? id : 'dark'; }
+    function apply(id){
+      var t = THEMES.filter(function(x){return x.id===id;})[0] || THEMES[0];
+      var el = document.documentElement;
+      el.classList.remove('light','dark');
+      Array.prototype.slice.call(el.classList).forEach(function(c){ if(c.indexOf('theme-')===0) el.classList.remove(c); });
+      el.classList.add(t.fam); el.classList.add('theme-'+t.id);
+      try{ localStorage.setItem('refcheck-theme', t.id); }catch(e){}
+      var nm = document.getElementById('theme-name'); if(nm) nm.textContent = t.name;
+      render();
     }
+    function swatch(sw){
+      return '<span style="display:inline-flex;width:34px;height:20px;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.35);flex:none">' +
+        '<span style="width:14px;background:'+sw[0]+'"></span>' +
+        '<span style="width:10px;background:'+sw[1]+'"></span>' +
+        '<span style="width:10px;background:'+sw[2]+'"></span></span>';
+    }
+    function render(){
+      var box = document.getElementById('theme-options'); if(!box) return;
+      var cur = current();
+      box.innerHTML = THEMES.map(function(t){
+        var active = t.id===cur;
+        return '<button data-theme-id="'+t.id+'" class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left text-sm '+(active?'bg-surface-3 text-ink':'text-ink-soft hover:bg-surface-2 hover:text-ink')+'">' +
+          swatch(t.sw) +
+          '<span class="flex-grow">'+t.name+'</span>' +
+          (active ? '<span class="material-symbols-outlined text-[16px] text-ink">check</span>' : '') +
+          '</button>';
+      }).join('');
+      box.querySelectorAll('[data-theme-id]').forEach(function(b){
+        b.addEventListener('click', function(){ apply(b.getAttribute('data-theme-id')); closeMenu(); });
+      });
+    }
+    var menu, btn;
+    function openMenu(){ if(menu){ menu.classList.remove('hidden'); btn.setAttribute('aria-expanded','true'); } }
+    function closeMenu(){ if(menu){ menu.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); } }
     document.addEventListener('DOMContentLoaded', function(){
-      setIcon();
-      var btn=document.getElementById('theme-toggle');
-      if(btn) btn.addEventListener('click', function(){ apply(!isLight()); });
+      menu = document.getElementById('theme-menu');
+      btn = document.getElementById('theme-btn');
+      var nm = document.getElementById('theme-name');
+      var cur = THEMES.filter(function(x){return x.id===current();})[0] || THEMES[0];
+      if(nm) nm.textContent = cur.name;
+      render();
+      if(btn) btn.addEventListener('click', function(e){ e.stopPropagation(); if(menu.classList.contains('hidden')) openMenu(); else closeMenu(); });
+      document.addEventListener('click', function(e){ if(menu && !menu.classList.contains('hidden') && !menu.contains(e.target) && e.target!==btn) closeMenu(); });
+      document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeMenu(); });
     });
   })();
   </script>
-  <script src="app-ui.js?v=26"></script>
+  <script src="app-ui.js?v=27"></script>
 </body>
 </html>

@@ -28,7 +28,7 @@
   const VERIFY_CONCURRENCY = 6;  // parallel existence checks
   const MAX_CITE_CHARS = 60000;
   const MAX_MATCH_CHARS = 200000;
-  const DEFAULT_MODEL = "gemini-2.5-flash";
+  const DEFAULT_MODEL = "gemini-2.5-flash-lite"; // broadly available + generous free per-minute limit
 
   // ---------- settings (localStorage; this machine only) ----------
   const SETTINGS_KEY = "refcheck-settings";
@@ -67,11 +67,44 @@
     try { localStorage.setItem(USAGE_KEY, JSON.stringify(next)); } catch (_) {}
   }
 
-  // ---------- Gemini ----------
+  // ---------- Gemini (rate-limited + auto-retry on 429) ----------
+  // Free-tier Gemini allows only ~10 requests/minute, so we (a) serialize all calls with a minimum gap
+  // to avoid instantaneous bursts, and (b) on a 429 wait the delay Google suggests (or exponential
+  // backoff) and retry — so a burst self-heals instead of failing the claim.
+  const GEMINI_MIN_GAP_MS = 1300;
+  const GEMINI_MAX_RETRIES = 5;
+  const GEMINI_MAX_BACKOFF_MS = 60000;
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+  let _gemLast = 0, _gemChain = Promise.resolve();
+  // Serialize every Gemini call through one chain with a min gap between them. While a call is sleeping
+  // for a 429 retry, the whole chain waits behind it — exactly the back-pressure we want at the RPM ceiling.
+  function scheduleGemini(task) {
+    const run = _gemChain.then(async () => {
+      const wait = GEMINI_MIN_GAP_MS - (Date.now() - _gemLast);
+      if (wait > 0) await sleep(wait);
+      try { return await task(); } finally { _gemLast = Date.now(); }
+    });
+    _gemChain = run.then(() => {}, () => {}); // keep the chain alive regardless of success/failure
+    return run;
+  }
+  function parseRetryDelayMs(detail, attempt) {
+    // Google returns error.details[] with @type RetryInfo + retryDelay like "27s"
+    try {
+      const j = JSON.parse(detail);
+      for (const d of (j?.error?.details || [])) {
+        const m = typeof d?.retryDelay === "string" ? d.retryDelay.match(/([\d.]+)s/) : null;
+        if (m) return Math.min(GEMINI_MAX_BACKOFF_MS, Math.ceil(parseFloat(m[1]) * 1000) + 600);
+      }
+    } catch (_) {}
+    return Math.min(GEMINI_MAX_BACKOFF_MS, Math.round(4000 * Math.pow(2, attempt) + Math.random() * 1000));
+  }
   async function geminiGenerate(prompt, schema) {
     const s = getSettings();
     if (!s.geminiKey) throw new Error("No Gemini API key set — add your key in Settings to use AI checks.");
-    bumpUsage();
+    bumpUsage(); // counts ONE logical check; the retries below never double-count
+    return scheduleGemini(() => geminiAttempt(prompt, schema, s, 0));
+  }
+  async function geminiAttempt(prompt, schema, s, attempt) {
     const model = s.model || DEFAULT_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(s.geminiKey)}`;
     let res;
@@ -87,16 +120,24 @@
     } catch (e) {
       throw new Error("Couldn't reach Google's Gemini API from the browser — check your connection and that the key is valid.");
     }
-    if (!res.ok) {
-      let detail = "";
-      try { detail = await res.text(); } catch (_) {}
-      if (res.status === 400 && /API key not valid/i.test(detail)) throw new Error("Gemini rejected the API key — double-check it in Settings.");
-      if (res.status === 429) throw new Error("Gemini rate limit / quota hit (429). Wait a bit, or lower the daily limit and check in smaller batches.");
-      throw new Error(`Gemini request failed (${res.status}): ${detail.slice(0, 200)}`);
+    if (res.ok) {
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+      try { return JSON.parse(text); } catch { throw new Error("Could not parse the model's response."); }
     }
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-    try { return JSON.parse(text); } catch { throw new Error("Could not parse the model's response."); }
+    let detail = "";
+    try { detail = await res.text(); } catch (_) {}
+    if (res.status === 429 && attempt < GEMINI_MAX_RETRIES) {
+      const waitMs = parseRetryDelayMs(detail, attempt); // chain is serialized, so this backs off everything
+      // let the UI show a "paused, resuming in Ns" countdown instead of looking stuck
+      try { window.dispatchEvent(new CustomEvent("refcheck-throttle", { detail: { waitMs, until: Date.now() + waitMs } })); } catch (_) {}
+      await sleep(waitMs);
+      try { window.dispatchEvent(new CustomEvent("refcheck-throttle-end", {})); } catch (_) {}
+      return geminiAttempt(prompt, schema, s, attempt + 1);
+    }
+    if (res.status === 400 && /API key not valid/i.test(detail)) throw new Error("Gemini rejected the API key — double-check it in Settings.");
+    if (res.status === 429) throw new Error("Gemini's free-tier limit was hit repeatedly (429). Free gemini-2.5-flash allows only ~10 requests/minute — switch to gemini-2.5-flash-lite in Settings (higher free limit), check fewer sources at once, or wait a minute.");
+    throw new Error(`Gemini request failed (${res.status}): ${detail.slice(0, 200)}`);
   }
 
   // List models that support generateContent (used by the "Detect available models" button).
@@ -267,6 +308,9 @@ References section:
     const strict = strictness === "critical"
       ? `STRICTNESS: CRITICAL. Hold the manuscript to its exact wording for final pre-submission rigor. Flag ANY overstatement, oversimplification, dropped caveat, or number that does not match precisely as "partial", even when the gist is defensible. Use "supported" only when the source fully and precisely supports the claim as written.`
       : `STRICTNESS: BROAD. Judge whether the author actually used this source for this claim. Accept defensible, good-faith readings: reasonable paraphrase, rounding, and summary are fine, and mild wording differences are NOT a problem. Use "supported" whenever the source substantively backs the claim, even if the manuscript's wording is somewhat stronger. Reserve "partial" for a real, material overstatement or a genuinely mismatched number, and "not_supported" for claims the source does not address or directly contradicts. Do not nitpick wording.`;
+    const basisNote = basis === "abstract"
+      ? `\nIMPORTANT — YOU ONLY HAVE THE ABSTRACT, not the full text. An abstract can CONFIRM a claim but usually cannot DISPROVE one (the detail may simply live in the body). If the abstract does not contain the specific detail this claim needs, do NOT return "not_supported" — return "unclear" and say in the explanation that the full text (or the uploaded source PDF) is needed to verify this claim. Only use "not_supported" if the abstract itself directly CONTRADICTS the claim.`
+      : "";
     const prompt = `You are a meticulous scientific citation checker. Below is a claim made in a manuscript
 and the text of the paper that was cited to support it (this is the paper's ${basis}).
 
@@ -276,7 +320,7 @@ CITED PAPER${paperTitle ? ` ("${paperTitle}")` : ""} ${String(basis).toUpperCase
 Your job: find the ACTUAL passage in the cited paper that bears on this claim, quote a substantial
 chunk of it word for word, and judge whether the paper really supports what the manuscript says.
 
-${strict}
+${strict}${basisNote}
 
 Steps:
 1. Break the claim into its concrete checkable assertions — sample/enrollment sizes, population or
@@ -744,20 +788,14 @@ Also return:
     let reason = ref.reason ?? "";
     const where = SOURCE_LABEL[cr.source] || "a database";
     if (cr.exists) {
-      if (cr.source === "web") {
-        if (verdict === "flagged") {
-          verdict = "review";
-          reason = `A snapshot of the cited link exists in the Internet Archive, so it appears to be a real web source — but double-check the details. ` + reason;
-        } else {
-          verdict = "verified";
-          reason = `Confirmed in the Internet Archive (a snapshot of the cited link exists). ` + reason;
-        }
-      } else if (verdict === "flagged") {
-        verdict = "review";
-        reason = `Found in ${where}, so it appears to be a real publication, though some details may differ — worth a look. ` + reason;
-      } else if (verdict !== "verified" && (ref.confidence ?? 1) >= 0.6) {
-        verdict = "verified";
-      }
+      // FOUND in a database (or archived) => the cited work is REAL => verified. Existence is stronger
+      // evidence than any AI plausibility guess, so a database hit overrides an AI "flag". We mark it
+      // verified even when the full text is paywalled/unreadable — being real is what "verified" means.
+      verdict = "verified";
+      const found = cr.source === "web"
+        ? `Confirmed real — a snapshot of the cited link exists in the Internet Archive.`
+        : `Confirmed real — found in ${where}.`;
+      reason = `${found} (Verified because the work exists; the full text may still be behind a paywall.) ` + reason;
     } else {
       const webNote =
         cr.webStatus === "not-archived"

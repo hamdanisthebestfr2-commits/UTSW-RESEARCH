@@ -523,15 +523,21 @@
     // the reference was "verified" at the bottom.)
     refs.forEach((r) => {
       r.claimMisuse = false; r.claimOverstated = false;
-      if (!r.sourceVerified) { r.verdict = r.baseVerdict; return; }
-      const assess = citationInstances
-        .filter((inst) => inst.refId === r.id)
-        .map((inst) => citeResults[inst.id])
-        .filter((x) => x && x.status === "done")
-        .map((x) => x.assessment);
-      if (assess.includes("not_supported")) { r.claimMisuse = true; r.verdict = "flagged"; }
-      else if (assess.includes("partial")) { r.claimOverstated = true; r.verdict = "review"; }
-      else { r.verdict = "verified"; }
+      if (r.sourceVerified) {
+        // a confirmed source PDF governs (accuracy layer), even over a manual approval
+        const assess = citationInstances
+          .filter((inst) => inst.refId === r.id)
+          .map((inst) => citeResults[inst.id])
+          .filter((x) => x && x.status === "done")
+          .map((x) => x.assessment);
+        if (assess.includes("not_supported")) { r.claimMisuse = true; r.verdict = "flagged"; return; }
+        if (assess.includes("partial")) { r.claimOverstated = true; r.verdict = "review"; return; }
+        r.verdict = "verified"; return;
+      }
+      // no source PDF: a manual approval (user override — e.g. a paywalled but clearly-correct link)
+      // wins over the existence verdict, unless the work is retracted.
+      if (r.manualApproved && !r.retracted) { r.verdict = "verified"; return; }
+      r.verdict = r.baseVerdict;
     });
     currentResult.counts = {
       verified: refs.filter((r) => r.verdict === "verified").length,
@@ -580,10 +586,26 @@
   function refsForSave(refs) {
     return (refs || []).map((r) => {
       const clean = { ...r };
+      // revert session-only source-PDF upgrades to the honest base verdict...
       if (r.sourceVerified && r.baseVerdict != null) clean.verdict = r.baseVerdict;
+      // ...but KEEP a manual approval (a deliberate user decision) so it survives reload.
+      if (r.manualApproved && !r.retracted && !(r.sourceVerified && r.claimMisuse)) clean.verdict = "verified";
       delete clean.baseVerdict; delete clean.sourceVerified; delete clean.sourceFile;
+      delete clean.claimMisuse; delete clean.claimOverstated;
       return clean;
     });
+  }
+  // Manual override: mark a review/flagged reference as verified (e.g. the cited work is real and the
+  // link is right, but it's paywalled so the checker couldn't open it). Toggles on/off.
+  function manualApprove(id) {
+    if (!currentResult) return;
+    const ref = (currentResult.references || []).find((r) => r.id === id);
+    if (!ref) return;
+    if (ref.baseVerdict == null) ref.baseVerdict = ref.verdict;
+    ref.manualApproved = !ref.manualApproved;
+    applySourceEvidence();
+    refreshScoreUI();
+    saveReferences();
   }
 
   // ---- document highlighter -------------------------------------------------
@@ -815,6 +837,12 @@
         : (r.reason || "");
       const conf = typeof r.confidence === "number"
         ? `<div class="flex items-center gap-2 mt-2.5"><span class="font-mono text-[9px] text-ink-mute uppercase">conf</span><div class="conf-bar w-16 h-1 rounded-full bg-white/8 overflow-hidden"><span class="bg-${v.color}" style="width:${Math.round(r.confidence * 100)}%"></span></div></div>` : "";
+      // Manual approve: shown on review/flagged refs (e.g. a real, correctly-linked but paywalled source
+      // the checker couldn't open). Not offered for retracted work.
+      const canApprove = !r.retracted && (r.verdict === "review" || r.verdict === "flagged" || r.manualApproved);
+      const approveBtn = canApprove
+        ? `<button class="ref-approve mt-2.5 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-md border transition-colors ${r.manualApproved ? "border-ok/40 text-ok bg-ok/10" : "border-border-strong text-ink-soft hover:text-ink hover:border-border-strong"}" data-ref-id="${r.id}" onclick="event.stopPropagation()"><span class="material-symbols-outlined text-[14px]" ${r.manualApproved ? "style=\"font-variation-settings:'FILL' 1;\"" : ""}>${r.manualApproved ? "check_circle" : "task_alt"}</span>${r.manualApproved ? "Approved by you — undo" : "Manually approve"}</button>`
+        : "";
       const flagBtn = `<button class="ref-flag shrink-0 p-1 -m-1 rounded ${r.marked ? "text-warn" : "text-ink-mute hover:text-ink"} transition-colors" data-ref-id="${r.id}" title="${r.marked ? "Unflag" : "Flag for review"}" onclick="event.stopPropagation()"><span class="material-symbols-outlined text-[18px]" style="${r.marked ? "font-variation-settings:'FILL' 1;" : ""}">${r.marked ? "bookmark" : "bookmark_border"}</span></button>`;
       return `
       <div class="ref-card glass beam lift rounded-xl p-4${r.marked ? " is-marked" : ""}" data-ref-id="${r.id}" role="button" tabindex="0">
@@ -835,6 +863,7 @@
             <p class="text-[12.5px] text-ink-soft mt-2 leading-relaxed">${escapeHtml(reasonText)}</p>
             ${conf}
             <div class="flex items-center gap-4 mt-2.5 flex-wrap">${cited}${exists}${link}${pmLink}${webLink}</div>
+            ${approveBtn}
             ${currentResult && currentResult.id ? feedbackBlock("reference", String(r.id)) : ""}
           </div>
         </div>
@@ -852,6 +881,9 @@
     }));
     list.querySelectorAll(".ref-flag").forEach((b) => b.addEventListener("click", (e) => {
       e.stopPropagation(); toggleFlag(parseInt(b.dataset.refId, 10));
+    }));
+    list.querySelectorAll(".ref-approve").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation(); manualApprove(parseInt(b.dataset.refId, 10));
     }));
     wireFeedback(list);
     attachBeam(list.querySelectorAll(".beam"));
@@ -1154,6 +1186,12 @@
     renderSources();
     renderCitations();
     updateCiteSummary();
+    // reset + render the evidence table for this analysis
+    evidenceRunning = false; evidenceStopFlag = false;
+    const ep = $("evidence-progress"); if (ep) ep.classList.add("hidden");
+    const er = $("evidence-run"); if (er) er.classList.remove("hidden");
+    const es = $("evidence-stop"); if (es) es.classList.add("hidden");
+    renderEvidenceTable(); renderEvidenceSummary();
     const cpw = $("cite-progress-wrap"); if (cpw) cpw.classList.add("hidden");
     const fr = $("format-result"); fr.classList.add("hidden"); fr.innerHTML = "";
   }
@@ -1547,7 +1585,7 @@
     const b = basisForInstance(inst);
     if (!b) return;
     citeResults[inst.id] = { status: "checking" };
-    renderCitations(); renderSources();
+    renderCitations(); renderSources(); renderEvidenceTable();
     try {
       const { data, error } = await Core.run({
         action: "cite", claim: inst.claim, paperText: b.paperText, paperTitle: b.paperTitle,
@@ -1559,7 +1597,7 @@
     } catch (err) {
       citeResults[inst.id] = { status: "error", error: err.message };
     }
-    renderCitations(); renderSources();
+    renderCitations(); renderSources(); renderEvidenceTable(); renderEvidenceSummary();
   }
 
   // When a source PDF is confirmed to BE a reference, immediately compare every in-text claim that cites
@@ -1579,13 +1617,13 @@
     if (!todo.length) return;
     // mark queued up front so a concurrent call doesn't double-fire the same claim
     todo.forEach((inst) => { citeResults[inst.id] = { status: "checking" }; });
-    renderCitations(); renderSources();
+    renderCitations(); renderSources(); renderEvidenceTable();
     let idx = 0;
     async function worker() { while (idx < todo.length) { await checkInstance(todo[idx++]); } }
     await Promise.all([worker(), worker()]); // concurrency 2, matches checkAll
     updateCiteSummary(); saveCitationState();
     // claim outcomes may downgrade a reference (real paper, but the claim isn't supported) — re-apply.
-    applySourceEvidence(); refreshScoreUI(); renderSources();
+    applySourceEvidence(); refreshScoreUI(); renderSources(); renderEvidenceTable(); renderEvidenceSummary();
   }
   async function checkOne(instId) {
     const inst = citationInstances.find((x) => x.id === instId);
@@ -1799,8 +1837,182 @@
     citeResults = {};
     saveCitationState();
     applySourceEvidence(); refreshScoreUI();
-    renderCitations(); renderSources();
+    renderCitations(); renderSources(); renderEvidenceTable(); renderEvidenceSummary();
     checkClaimsForConfirmedSources();
+  }
+
+  // ============================================================
+  // Phase 4 — "Check citation accuracy" run + evidence table
+  // ============================================================
+  let evidenceRunning = false, evidenceStopFlag = false;
+  let evDone = 0, evTotal = 0, throttleUntil = 0, throttleTimer = null;
+
+  function checkableInstances() { return citationInstances.filter((inst) => basisForInstance(inst)); }
+
+  function setEvStatus(msg) { const el = $("evidence-status"); if (el) el.textContent = msg; }
+  function setEvBar(done, total) { const b = $("evidence-bar"); if (b) b.style.width = (total ? Math.round(100 * done / total) : 0) + "%"; }
+
+  async function runEvidenceCheck() {
+    if (evidenceRunning) return;
+    if (!currentResult) return;
+    if (!Core.getSettings().geminiKey) {
+      $("evidence-progress").classList.remove("hidden");
+      setEvBar(0, 1); setEvStatus("Add your Gemini API key in Settings to run the accuracy check.");
+      openSettings(true);
+      return;
+    }
+    const all = checkableInstances();
+    const todo = all.filter((inst) => !(citeResults[inst.id] && citeResults[inst.id].status === "done"));
+    evTotal = all.length;
+    evDone = evTotal - todo.length;
+    if (!evTotal) { $("evidence-progress").classList.remove("hidden"); setEvStatus("No citations have a readable source to check — upload the source PDFs, or the cited works are paywalled with no abstract."); return; }
+    evidenceRunning = true; evidenceStopFlag = false;
+    $("evidence-run").classList.add("hidden");
+    $("evidence-stop").classList.remove("hidden");
+    $("evidence-progress").classList.remove("hidden");
+    setEvBar(evDone, evTotal);
+    setEvStatus(`Checking ${evTotal} citation${evTotal === 1 ? "" : "s"}… (${evDone}/${evTotal} done)`);
+    for (const inst of todo) {
+      if (evidenceStopFlag) break;
+      await checkInstance(inst);        // Gemini scheduler paces + auto-retries; throttle events drive the status
+      evDone++;
+      setEvBar(evDone, evTotal);
+      if (!throttleUntil) setEvStatus(`Checking citations… (${evDone}/${evTotal} done)`);
+    }
+    evidenceRunning = false;
+    $("evidence-stop").classList.add("hidden");
+    $("evidence-run").classList.remove("hidden");
+    updateCiteSummary(); saveCitationState();
+    applySourceEvidence(); refreshScoreUI();
+    renderEvidenceTable(); renderEvidenceSummary();
+    setEvStatus(evidenceStopFlag
+      ? `Stopped at ${evDone}/${evTotal}. Press Run check to resume — finished checks are kept.`
+      : `Done — checked ${evDone} of ${evTotal} citation${evTotal === 1 ? "" : "s"}.`);
+  }
+  function stopEvidenceCheck() { evidenceStopFlag = true; setEvStatus("Stopping after the current check…"); }
+
+  // Show the rate-limit pause as a live countdown (so it never looks stuck).
+  function updateThrottleStatus() {
+    if (!throttleUntil) return;
+    const secs = Math.max(0, Math.ceil((throttleUntil - Date.now()) / 1000));
+    if (evidenceRunning) setEvStatus(`Hit the rate limit — pausing ${secs}s, then continuing automatically… (${evDone}/${evTotal} done)`);
+  }
+  window.addEventListener("refcheck-throttle", (e) => {
+    throttleUntil = (e.detail && e.detail.until) || (Date.now() + 30000);
+    updateThrottleStatus();
+    if (throttleTimer) clearInterval(throttleTimer);
+    throttleTimer = setInterval(updateThrottleStatus, 500);
+  });
+  window.addEventListener("refcheck-throttle-end", () => {
+    throttleUntil = 0;
+    if (throttleTimer) { clearInterval(throttleTimer); throttleTimer = null; }
+    if (evidenceRunning) setEvStatus(`Resuming… (${evDone}/${evTotal} done)`);
+  });
+
+  const EV_CHIP = (color, text) => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-${color}/10 text-${color} border border-${color}/20">${text}</span>`;
+  function renderEvidenceSummary() {
+    const el = $("evidence-summary"); if (!el) return;
+    let sup = 0, par = 0, ns = 0, unc = 0, nosrc = 0;
+    citationInstances.forEach((inst) => {
+      const b = basisForInstance(inst), res = citeResults[inst.id];
+      if (!b) { nosrc++; return; }
+      if (res && res.status === "done") {
+        if (res.assessment === "supported") sup++;
+        else if (res.assessment === "partial") par++;
+        else if (res.assessment === "not_supported") ns++;
+        else unc++;
+      }
+    });
+    if (sup + par + ns + unc + nosrc === 0) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    el.innerHTML =
+      EV_CHIP("ok", `${sup} supported`) + EV_CHIP("warn", `${par} nuance`) + EV_CHIP("bad", `${ns} not supported`) +
+      (unc ? EV_CHIP("ink-mute", `${unc} unclear`) : "") + (nosrc ? EV_CHIP("ink-mute", `${nosrc} no source`) : "");
+  }
+
+  function renderEvidenceTable() {
+    const tbl = $("evidence-table"), wrap = $("evidence-wrap"), empty = $("evidence-empty"), exp = $("evidence-export");
+    if (!tbl) return;
+    const groups = {};
+    citationInstances.forEach((inst) => { (groups[inst.refId] = groups[inst.refId] || []).push(inst); });
+    const refIds = Object.keys(groups).map(Number).sort((a, b) => a - b);
+    if (!refIds.length) {
+      if (wrap) wrap.classList.add("hidden");
+      if (exp) exp.classList.add("hidden");
+      if (empty) { empty.classList.remove("hidden"); empty.textContent = "No in-text citations were detected in the manuscript body to check."; }
+      return;
+    }
+    const head = `<thead><tr class="text-ink-mute font-mono text-[10px] uppercase tracking-wide border-b border-border-strong">
+      <th class="py-2 pr-3 font-normal align-bottom w-[26%]">Reference</th>
+      <th class="py-2 px-3 font-normal align-bottom">Claim in the manuscript</th>
+      <th class="py-2 px-3 font-normal align-bottom">What the source says</th>
+      <th class="py-2 pl-3 font-normal align-bottom w-[16%]">Verdict</th></tr></thead>`;
+    let anyDone = false;
+    const body = refIds.map((rid) => {
+      const insts = groups[rid], ref = refById(rid);
+      const b = basisForInstance(insts[0]);
+      const name = ref ? (ref.title || ref.raw || `[${rid}]`) : `[${rid}]`;
+      const basisChip = b ? (b.basis === "full text" ? "source PDF" : "abstract") : "no source";
+      return insts.map((inst, i) => {
+        const res = citeResults[inst.id];
+        let quote, verdict;
+        if (res && res.status === "done") {
+          anyDone = true;
+          const a = ASSESS[res.assessment] || ASSESS.unclear;
+          quote = res.sourceQuote ? `&ldquo;${escapeHtml(res.sourceQuote)}&rdquo;` : `<span class="text-ink-mute not-italic">No matching passage found in the source.</span>`;
+          verdict = `<span class="inline-flex items-center gap-1 text-${a.color} font-medium"><span class="material-symbols-outlined text-[14px]" style="font-variation-settings:'FILL' 1;">${a.icon}</span>${a.label}</span>`;
+        } else if (!b) {
+          quote = `<span class="text-ink-mute not-italic">The cited work has no uploaded PDF and no accessible abstract (likely paywalled), so the claim couldn't be verified. Upload the source PDF to check it.</span>`;
+          verdict = `<span class="text-ink-mute">No accessible source</span>`;
+        } else if (res && res.status === "checking") {
+          quote = `<span class="text-ink-mute not-italic inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin"></span>Reading the source…</span>`;
+          verdict = `<span class="text-ink-mute">Checking…</span>`;
+        } else if (res && res.status === "error") {
+          quote = `<span class="text-bad not-italic">${escapeHtml(res.error || "Check failed.")}</span>`;
+          verdict = `<span class="text-bad">Error</span>`;
+        } else {
+          quote = `<span class="text-ink-mute not-italic">Not checked yet — will read the ${b.basis === "full text" ? "source PDF" : "abstract"}.</span>`;
+          verdict = `<span class="text-ink-mute">Pending</span>`;
+        }
+        const refCell = i === 0
+          ? `<td rowspan="${insts.length}" class="align-top py-2.5 pr-3 border-b border-border-subtle">
+               <div class="text-white leading-snug">${escapeHtml(name.length > 110 ? name.slice(0, 110) + "…" : name)}</div>
+               <div class="font-mono text-[10px] text-ink-mute mt-1">[${rid}] · cited ${insts.length}&times; · ${basisChip}</div>
+             </td>` : "";
+        return `<tr>${refCell}
+          <td class="align-top py-2.5 px-3 border-b border-border-subtle text-ink">&ldquo;${escapeHtml(inst.claim)}&rdquo;</td>
+          <td class="align-top py-2.5 px-3 border-b border-border-subtle text-ink-soft italic leading-relaxed">${quote}</td>
+          <td class="align-top py-2.5 pl-3 border-b border-border-subtle">${verdict}</td></tr>`;
+      }).join("");
+    }).join("");
+    tbl.innerHTML = head + `<tbody>${body}</tbody>`;
+    if (wrap) wrap.classList.remove("hidden");
+    if (empty) empty.classList.add("hidden");
+    if (exp) exp.classList.toggle("hidden", !anyDone);
+  }
+
+  function exportEvidenceCsv() {
+    const rows = [["Reference", "Ref #", "Times cited", "Basis", "Claim in manuscript", "What the source says", "Verdict"]];
+    const groups = {};
+    citationInstances.forEach((inst) => { (groups[inst.refId] = groups[inst.refId] || []).push(inst); });
+    Object.keys(groups).map(Number).sort((a, b) => a - b).forEach((rid) => {
+      const insts = groups[rid], ref = refById(rid), b = basisForInstance(insts[0]);
+      insts.forEach((inst) => {
+        const res = citeResults[inst.id];
+        const verdict = !b ? "No accessible source"
+          : (res && res.status === "done") ? (ASSESS[res.assessment] || ASSESS.unclear).label
+          : (res && res.status === "error") ? "Error" : "Not checked";
+        rows.push([ref ? (ref.title || ref.raw || "") : "", rid, insts.length, b ? b.basis : "none",
+          inst.claim, (res && res.sourceQuote) || "", verdict]);
+      });
+    });
+    const csv = rows.map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `evidence-${(currentResult && currentResult.filename ? currentResult.filename.replace(/\.[^.]+$/, "") : "table")}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function wirePhase3() {
@@ -1811,6 +2023,9 @@
     srcDrop.addEventListener("drop", (e) => { if (e.dataTransfer.files && e.dataTransfer.files.length) addSourceFiles(e.dataTransfer.files); });
     const checkAllBtn = $("cite-check-all"); if (checkAllBtn) checkAllBtn.addEventListener("click", checkAll);
     $("format-check-btn").addEventListener("click", runFormatCheck);
+    const evRun = $("evidence-run"); if (evRun) evRun.addEventListener("click", runEvidenceCheck);
+    const evStop = $("evidence-stop"); if (evStop) evStop.addEventListener("click", stopEvidenceCheck);
+    const evExp = $("evidence-export"); if (evExp) evExp.addEventListener("click", exportEvidenceCsv);
   }
 
   function escapeHtml(s) {
