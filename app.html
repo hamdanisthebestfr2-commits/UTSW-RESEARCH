@@ -214,19 +214,15 @@
             REF<span class="text-ink-mute font-normal">/</span>CHECK
           </a>
         </div>
-        <div class="flex items-center gap-3">
-          <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full glass">
-            <span id="user-avatar" class="w-6 h-6 rounded-full bg-gradient-to-br from-white/25 to-white/5 border border-border-subtle flex items-center justify-center text-[11px] font-semibold text-ink">U</span>
-            <span id="user-email" class="text-xs text-ink-soft max-w-[180px] truncate">—</span>
-          </div>
-          <a id="admin-link" href="admin.html" class="hidden items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors px-2 py-1.5">
-            <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span><span class="hidden sm:inline">Admin</span>
-          </a>
+        <div class="flex items-center gap-2">
+          <span class="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono text-ink-mute px-2.5 py-1 rounded-full glass" title="Runs entirely on this device — no login, nothing uploaded to a server of ours">
+            <span class="material-symbols-outlined text-[14px]">lock</span>Runs locally
+          </span>
+          <button id="settings-btn" class="flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors px-2 py-1.5">
+            <span class="material-symbols-outlined text-[18px]">settings</span><span class="hidden sm:inline">Settings</span>
+          </button>
           <button id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle light or dark mode" class="flex items-center justify-center text-ink-soft hover:text-ink transition-colors p-1.5 rounded-lg">
             <span id="theme-icon" class="material-symbols-outlined text-[19px]">light_mode</span>
-          </button>
-          <button id="logout-btn" class="flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors px-2 py-1.5">
-            <span class="material-symbols-outlined text-[18px]">logout</span><span class="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </div>
@@ -305,6 +301,46 @@
             class="btn-primary w-full mt-6 px-6 py-3.5 rounded-lg font-semibold flex items-center justify-center gap-2">
             <span class="material-symbols-outlined">neurology</span> Analyze references
           </button>
+
+          <!-- no-key nudge -->
+          <div id="key-nudge" class="hidden mt-4 flex items-start gap-2 rounded-lg bg-warn/10 border border-warn/20 px-3 py-2.5 text-[12.5px] text-warn">
+            <span class="material-symbols-outlined text-[16px] mt-0.5">key</span>
+            <span>Add your own <b>Gemini API key</b> in <button id="key-nudge-link" class="underline hover:no-underline">Settings</button> to run the analysis. Checking whether references are real needs no key; reading them and checking claims uses AI.</span>
+          </div>
+
+          <!-- SETTINGS -->
+          <div id="settings-panel" class="hidden mt-6 glass rounded-2xl p-5 sm:p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="font-display text-lg text-white flex items-center gap-2"><span class="material-symbols-outlined text-[20px] text-ink-soft">settings</span>Settings</h2>
+              <button id="settings-close" class="text-ink-mute hover:text-ink p-1"><span class="material-symbols-outlined text-[20px]">close</span></button>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-[12px] text-white font-medium mb-1">Your email <span class="text-ink-mute font-normal">(CrossRef/PubMed ask callers to identify themselves — optional)</span></label>
+                <input id="set-email" type="email" placeholder="you@hospital.edu" class="w-full bg-surface-2 border border-border-subtle rounded-lg text-sm text-ink px-3 py-2">
+              </div>
+              <div>
+                <label class="block text-[12px] text-white font-medium mb-1">Gemini API key <span class="text-ink-mute font-normal">· needed for AI checks</span></label>
+                <input id="set-key" type="password" placeholder="AIza…" autocomplete="off" class="w-full bg-surface-2 border border-border-subtle rounded-lg text-sm text-ink px-3 py-2 font-mono">
+                <div class="flex items-center gap-2 mt-2 flex-wrap">
+                  <button id="detect-models" class="glass px-2.5 py-1.5 rounded-md text-[11px] text-ink hover:border-border-strong inline-flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">search</span>Detect available models</button>
+                  <select id="set-model" class="bg-surface-2 border border-border-subtle rounded-md text-[11px] text-ink px-2 py-1.5">
+                    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                  </select>
+                </div>
+                <div id="detect-status" class="text-[11px] text-ink-mute mt-1.5">Get a free key at <span class="text-ink-soft">aistudio.google.com/apikey</span>.</div>
+              </div>
+              <div>
+                <label class="block text-[12px] text-white font-medium mb-1">Daily check limit <span class="text-ink-mute font-normal">(safety stop)</span></label>
+                <input id="set-limit" type="number" min="1" value="200" class="w-32 bg-surface-2 border border-border-subtle rounded-lg text-sm text-ink px-3 py-2">
+                <div id="usage-line" class="text-[11px] text-ink-mute mt-1.5"></div>
+              </div>
+            </div>
+            <p class="text-[11.5px] text-ink-mute mt-4 leading-relaxed border-t border-border-subtle pt-3">
+              <b class="text-ink-soft">Nothing is uploaded to any server of ours.</b> References are checked against CrossRef, PubMed, OpenAlex, DataCite and Google Books from your browser; claim-checking calls Google's Gemini directly with your own key. Your key and history are stored only in this browser, on this machine.
+            </p>
+          </div>
         </section>
 
         <!-- PROCESSING VIEW -->
@@ -448,6 +484,16 @@
               <p class="text-sm text-ink-soft mt-1 max-w-xl">Upload the source papers you cited. Each is matched to a reference, read in full, and every claim citing it is laid side by side with the paper's own words.</p>
             </div>
 
+            <!-- strictness -->
+            <div class="mt-4">
+              <label class="block text-[12.5px] text-white font-medium mb-1.5">How strict should the fact-check be?</label>
+              <select id="strictness" class="w-full bg-surface-2 border border-border-subtle rounded-lg text-sm text-ink px-3 py-2.5">
+                <option value="broad">Broad — did they read it? (defensible readings pass; flags only real gaps)</option>
+                <option value="critical">Critical — also flag wording that overstates the source</option>
+              </select>
+              <p class="text-[11.5px] text-ink-mute mt-1.5">Broad asks whether the author actually used the source. Critical also flags wording that overstates it — use it for final pre-submission rigor. Changing this re-runs the checks.</p>
+            </div>
+
             <!-- disclaimer -->
             <div class="mt-4 flex items-start gap-2 rounded-lg bg-warn/10 border border-warn/20 px-3 py-2.5 text-[12.5px] text-warn">
               <span class="material-symbols-outlined text-[16px] mt-0.5">info</span>
@@ -479,10 +525,9 @@
   <!-- mobile sidebar backdrop -->
   <div id="sidebar-backdrop" class="hidden fixed inset-0 z-30 bg-black/60 lg:hidden"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="supabase-config.js?v=12"></script>
+  <script src="refcheck-core.js?v=1"></script>
   <script>
   // Light/dark toggle. The icon shows the mode you'll switch TO (sun in dark, moon in light).
   (function(){
@@ -501,6 +546,6 @@
     });
   })();
   </script>
-  <script src="app-ui.js?v=25"></script>
+  <script src="app-ui.js?v=26"></script>
 </body>
 </html>

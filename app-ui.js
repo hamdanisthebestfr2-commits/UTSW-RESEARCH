@@ -1,18 +1,36 @@
 // ============================================================
-// REF/CHECK AI — app workspace logic
-// Auth gate → file upload → client-side text extraction (pdf.js / mammoth)
-// → invoke secure `verify` Edge Function (Gemini + CrossRef) → render + persist.
+// REF/CHECK AI — app workspace logic (fully local: no login, no cloud)
+// file upload → client-side text extraction (pdf.js / mammoth)
+// → RefCheckCore.run() (Gemini with your key + CrossRef/OpenAlex/etc. in the browser)
+// → render → save to localStorage (this machine only).
 // ============================================================
 (function () {
   "use strict";
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // ---- config guard ----
-  const configured = window.SUPABASE_URL && !/YOUR-PROJECT/.test(window.SUPABASE_URL)
-    && window.SUPABASE_ANON_KEY && !/YOUR-ANON/.test(window.SUPABASE_ANON_KEY);
-  if (!configured || !window.supabase) { location.replace("auth.html"); return; }
+  const Core = window.RefCheckCore;
 
-  const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  // ---- local analysis store (replaces the old Supabase `analyses`/`feedback` tables) ----
+  // One localStorage array of records; each holds everything needed to rebuild a past analysis.
+  const STORE_KEY = "refcheck-analyses";
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "[]") || []; } catch (_) { return []; }
+  }
+  function saveStore(arr) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(arr.slice(0, 50))); } catch (_) {}
+  }
+  function storeGet(id) { return loadStore().find((r) => r.id === id) || null; }
+  function storeUpsert(rec) {
+    const arr = loadStore();
+    const i = arr.findIndex((r) => r.id === rec.id);
+    if (i >= 0) arr[i] = { ...arr[i], ...rec };
+    else arr.unshift(rec);
+    saveStore(arr);
+  }
+  function newId() {
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+    return "a" + Date.now() + Math.random().toString(36).slice(2, 8);
+  }
 
   // pdf.js worker
   if (window.pdfjsLib) {
@@ -48,47 +66,28 @@
   let batchStatuses = {};
 
   // ============================================================
-  // Session gate
+  // Boot — no login; open straight into the workspace
   // ============================================================
-  (async function init() {
-    const { data } = await sb.auth.getSession();
-    if (!(data && data.session)) { location.replace("auth.html"); return; }
-    const user = data.session.user;
-    const email = user.email || "";
-    userEmail = email;
-    $("user-email").textContent = email;
-    $("user-avatar").textContent = (email[0] || "U").toUpperCase();
-    // admin link for admin accounts
-    const admins = (window.ADMIN_EMAILS || []).map((e) => e.toLowerCase());
-    if (admins.includes(email.toLowerCase())) {
-      const a = $("admin-link"); a.classList.remove("hidden"); a.classList.add("flex");
-    }
-    gate.classList.add("hidden");
-    app.classList.remove("hidden");
+  (function init() {
+    if (gate) gate.classList.add("hidden");
+    if (app) app.classList.remove("hidden");
     initInteractions();
     wirePhase3();
+    wireSettings();
     loadHistory();
     loadAppStat();
   })();
 
-  // Global usage stat shown on the upload screen (via a security-definer RPC).
-  async function loadAppStat() {
-    try {
-      const { data, error } = await sb.rpc("app_stats");
-      if (error || !data) return;
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row) return;
-      const m = row.manuscripts ?? 0, r = row.references_count ?? 0;
-      const el = $("app-stat");
-      el.textContent = `This tool has checked ${m} manuscript${m == 1 ? "" : "s"} and ${r} reference${r == 1 ? "" : "s"} so far.`;
-      el.classList.remove("hidden");
-    } catch (_) { /* RPC may not exist yet */ }
+  // Local usage stat: how many manuscripts this browser has checked.
+  function loadAppStat() {
+    const el = $("app-stat");
+    if (!el) return;
+    const arr = loadStore();
+    if (!arr.length) return;
+    const refs = arr.reduce((n, r) => n + ((r.results && r.results.length) || 0), 0);
+    el.textContent = `You've checked ${arr.length} manuscript${arr.length === 1 ? "" : "s"} and ${refs} reference${refs === 1 ? "" : "s"} on this device.`;
+    el.classList.remove("hidden");
   }
-
-  $("logout-btn").addEventListener("click", async () => {
-    await sb.auth.signOut();
-    location.replace("index.html");
-  });
 
   // ============================================================
   // File selection
@@ -189,12 +188,8 @@
         if (!fullText || fullText.replace(/\s/g, "").length < 40) throw new Error("no readable text");
         const { slice: referencesText, bodyEnd } = sliceReferences(fullText);
         batchStatuses[i] = { status: "analyzing" }; renderBatch();
-        const { data, error } = await sb.functions.invoke("verify", { body: { filename: f.name, referencesText } });
-        if (error) {
-          let msg = error.message || "failed";
-          try { const ctx = await error.context?.json?.(); if (ctx?.error) msg = ctx.error; } catch (_) {}
-          throw new Error(msg);
-        }
+        const { data, error } = await Core.run({ filename: f.name, referencesText });
+        if (error) throw new Error(error.message || "failed");
         if (data && data.error) throw new Error(data.error);
         const result = { ...data, fullText, bodyEnd, created_at: new Date().toISOString() };
         await persist(result);
@@ -296,15 +291,9 @@
       const { slice: referencesText, bodyEnd } = sliceReferences(fullText);
       renderSteps(2); setProgress(55);
 
-      // 3) call secure edge function (Gemini + CrossRef)
-      const { data, error } = await sb.functions.invoke("verify", {
-        body: { filename: currentFile.name, referencesText },
-      });
-      if (error) {
-        let msg = error.message || "Analysis failed.";
-        try { const ctx = await error.context?.json?.(); if (ctx?.error) msg = ctx.error; } catch (_) {}
-        throw new Error(msg);
-      }
+      // 3) extract + verify — all in the browser (Gemini with your key + CrossRef/OpenAlex/etc.)
+      const { data, error } = await Core.run({ filename: currentFile.name, referencesText });
+      if (error) throw new Error(error.message || "Analysis failed.");
       if (data && data.error) throw new Error(data.error);
       renderSteps(3); setProgress(85);
 
@@ -320,25 +309,25 @@
     }
   });
 
-  async function persist(result) {
-    try {
-      const { data } = await sb.from("analyses").insert({
-        filename: result.filename,
-        integrity_score: result.integrityScore,
-        counts: result.counts,
-        results: refsForSave(result.references),
-        document_text: (result.fullText || "").slice(0, 300000),
-      }).select("id").single();
-      if (data && data.id) result.id = data.id;
-    } catch (_) { /* non-fatal: still show results */ }
+  function persist(result) {
+    result.id = result.id || newId();
+    storeUpsert({
+      id: result.id,
+      filename: result.filename,
+      integrity_score: result.integrityScore,
+      counts: result.counts,
+      results: refsForSave(result.references),
+      citation_results: result.citationResults || {},
+      feedback: result.feedback || {},
+      document_text: (result.fullText || "").slice(0, 300000),
+      created_at: result.created_at || new Date().toISOString(),
+    });
   }
 
-  // Persist a manual change (e.g. Flag for Review) back to the saved analysis row.
-  async function saveReferences() {
+  // Persist a manual change (e.g. Flag for Review) back to the saved analysis record.
+  function saveReferences() {
     if (!currentResult || !currentResult.id) return;
-    try {
-      await sb.from("analyses").update({ results: refsForSave(currentResult.references) }).eq("id", currentResult.id);
-    } catch (_) { /* non-fatal */ }
+    storeUpsert({ id: currentResult.id, results: refsForSave(currentResult.references) });
   }
 
   // Toggle the manual "flag for review" bookmark on a reference.
@@ -527,8 +516,23 @@
         r.sourceVerified = true; r.sourceFile = p.filename;
       }
     });
-    // apply: a confirmed source PDF => verified; otherwise fall back to the honest backend verdict
-    refs.forEach((r) => { r.verdict = r.sourceVerified ? "verified" : r.baseVerdict; });
+    // apply: a confirmed source PDF proves the reference is REAL — but identity-confirmed is NOT the
+    // same as correctly-cited. If the claim(s) that cite this reference are NOT supported by the very
+    // PDF that proves it real, the citation is being MISUSED, so we flag it instead of calling it a
+    // clean "verified". (This is the fix for a red "Not supported by the source" card that still said
+    // the reference was "verified" at the bottom.)
+    refs.forEach((r) => {
+      r.claimMisuse = false; r.claimOverstated = false;
+      if (!r.sourceVerified) { r.verdict = r.baseVerdict; return; }
+      const assess = citationInstances
+        .filter((inst) => inst.refId === r.id)
+        .map((inst) => citeResults[inst.id])
+        .filter((x) => x && x.status === "done")
+        .map((x) => x.assessment);
+      if (assess.includes("not_supported")) { r.claimMisuse = true; r.verdict = "flagged"; }
+      else if (assess.includes("partial")) { r.claimOverstated = true; r.verdict = "review"; }
+      else { r.verdict = "verified"; }
+    });
     currentResult.counts = {
       verified: refs.filter((r) => r.verdict === "verified").length,
       review: refs.filter((r) => r.verdict === "review").length,
@@ -1006,21 +1010,12 @@
   // ============================================================
   // History
   // ============================================================
-  async function loadHistory() {
-    let { data, error } = await sb.from("analyses")
-      .select("id, filename, integrity_score, counts, results, document_text, citation_results, created_at")
-      .order("created_at", { ascending: false }).limit(50);
-    if (error) {
-      // fallback if newer columns (document_text / citation_results) haven't been added yet
-      ({ data, error } = await sb.from("analyses")
-        .select("id, filename, integrity_score, counts, results, created_at")
-        .order("created_at", { ascending: false }).limit(50));
-    }
-    if (error || !data) return;
-    historyCount.textContent = data.length;
+  function loadHistory() {
+    const data = loadStore();
+    if (historyCount) historyCount.textContent = data.length;
+    historyList.querySelectorAll("[data-hid]").forEach((n) => n.remove());
     if (!data.length) { historyEmpty.classList.remove("hidden"); return; }
     historyEmpty.classList.add("hidden");
-    historyList.querySelectorAll("[data-hid]").forEach((n) => n.remove());
     data.forEach((row) => {
       const el = document.createElement("button");
       el.setAttribute("data-hid", row.id);
@@ -1040,6 +1035,7 @@
           filename: row.filename, integrityScore: row.integrity_score,
           counts: row.counts, references: row.results, created_at: row.created_at,
           citationResults: row.citation_results || {},
+          feedback: row.feedback || {},
           fullText, bodyEnd,
         };
         renderResult(currentResult);
@@ -1308,17 +1304,11 @@
     paper.aiMatch = { status: "checking", refId: paper.refId };
     renderSources();
     try {
-      const { data, error } = await sb.functions.invoke("verify", {
-        body: {
-          action: "match", paperText: paper.text,
-          ref: { title: ref.title, authors: ref.authors, year: ref.year, journal: ref.journal, raw: ref.raw, doi: ref.doi },
-        },
+      const { data, error } = await Core.run({
+        action: "match", paperText: paper.text,
+        ref: { title: ref.title, authors: ref.authors, year: ref.year, journal: ref.journal, raw: ref.raw, doi: ref.doi },
       });
-      if (error) {
-        let msg = error.message || "Verification failed.";
-        try { const ctx = await error.context?.json?.(); if (ctx?.error) msg = ctx.error; } catch (_) {}
-        throw new Error(msg);
-      }
+      if (error) throw new Error(error.message || "Verification failed.");
       if (data && data.error) throw new Error(data.error);
       paper.aiMatch = { status: "done", refId: paper.refId, ...data };
     } catch (err) {
@@ -1411,9 +1401,18 @@
              ${meta ? `<div class="mt-1.5 flex flex-col gap-0.5 text-[11px]">${meta}</div>` : ""}
            </details>`
         : "";
-      const conclusion = ai.verdict === "confirmed"
-        ? `<div class="mt-2 text-[11px] text-ok flex items-start gap-1.5"><span class="material-symbols-outlined text-[13px]" style="font-variation-settings:'FILL' 1;">verified</span><span>Reference [${refId}] is now counted as <b>verified</b> and the reliability score was updated.</span></div>`
-        : `<div class="mt-2 text-[11px] text-warn flex items-start gap-1.5"><span class="material-symbols-outlined text-[13px]">rule</span><span>Score left unchanged — the metadata above doesn't fully line up, but the claim evidence below still applies.</span></div>`;
+      // The conclusion reflects the CLAIM outcome, not just identity. A real paper that doesn't support
+      // the claim it's cited for is a citation error — never show a green "verified" under a red card.
+      const claimAssess = citing
+        .map((inst) => citeResults[inst.id]).filter((x) => x && x.status === "done").map((x) => x.assessment);
+      const anyDone = claimAssess.length > 0;
+      const conclusion = claimAssess.includes("not_supported")
+        ? `<div class="mt-2 text-[11px] text-bad flex items-start gap-1.5"><span class="material-symbols-outlined text-[13px]" style="font-variation-settings:'FILL' 1;">cancel</span><span>This is the right paper, but it does <b>not</b> support the claim it's cited for — reference [${refId}] is <b>flagged as a citation error</b>, not verified.</span></div>`
+        : claimAssess.includes("partial")
+        ? `<div class="mt-2 text-[11px] text-warn flex items-start gap-1.5"><span class="material-symbols-outlined text-[13px]">rule</span><span>This is the right paper, but the citation <b>overstates</b> it — reference [${refId}] is marked <b>for review</b>.</span></div>`
+        : anyDone
+        ? `<div class="mt-2 text-[11px] text-ok flex items-start gap-1.5"><span class="material-symbols-outlined text-[13px]" style="font-variation-settings:'FILL' 1;">verified</span><span>Reference [${refId}] is real <b>and</b> the claim checks out — counted as <b>verified</b>.</span></div>`
+        : `<div class="mt-2 text-[11px] text-ink-mute flex items-start gap-1.5"><span class="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin mt-0.5"></span><span>Confirmed as reference [${refId}] — checking the claim${citing.length === 1 ? "" : "s"} against it…</span></div>`;
       return `<div class="src-evidence mt-2 rounded-lg bg-white/[0.02] border border-border-subtle px-3 py-2.5">
         ${header}
         ${discrepancy}
@@ -1550,14 +1549,11 @@
     citeResults[inst.id] = { status: "checking" };
     renderCitations(); renderSources();
     try {
-      const { data, error } = await sb.functions.invoke("verify", {
-        body: { action: "cite", claim: inst.claim, paperText: b.paperText, paperTitle: b.paperTitle, basis: b.basis === "abstract" ? "abstract" : "full" },
+      const { data, error } = await Core.run({
+        action: "cite", claim: inst.claim, paperText: b.paperText, paperTitle: b.paperTitle,
+        basis: b.basis === "abstract" ? "abstract" : "full", strictness: getStrictness(),
       });
-      if (error) {
-        let msg = error.message || "Check failed.";
-        try { const ctx = await error.context?.json?.(); if (ctx?.error) msg = ctx.error; } catch (_) {}
-        throw new Error(msg);
-      }
+      if (error) throw new Error(error.message || "Check failed.");
       if (data && data.error) throw new Error(data.error);
       citeResults[inst.id] = { status: "done", assessment: data.assessment, explanation: data.explanation, sourceQuote: data.sourceQuote || "", basis: b.basis };
     } catch (err) {
@@ -1588,12 +1584,15 @@
     async function worker() { while (idx < todo.length) { await checkInstance(todo[idx++]); } }
     await Promise.all([worker(), worker()]); // concurrency 2, matches checkAll
     updateCiteSummary(); saveCitationState();
+    // claim outcomes may downgrade a reference (real paper, but the claim isn't supported) — re-apply.
+    applySourceEvidence(); refreshScoreUI(); renderSources();
   }
   async function checkOne(instId) {
     const inst = citationInstances.find((x) => x.id === instId);
     if (!inst) return;
     await checkInstance(inst);
     updateCiteSummary(); saveCitationState();
+    applySourceEvidence(); refreshScoreUI(); renderSources();
   }
   async function checkAll() {
     const todo = citationInstances.filter((inst) => basisForInstance(inst) && !(citeResults[inst.id] && citeResults[inst.id].status === "done"));
@@ -1645,26 +1644,29 @@
     if (currentResult) renderVerdictBanner(currentResult);
   }
 
-  // persist citation assessments to the saved analysis (C2)
-  async function saveCitationState() {
+  // persist citation assessments to the saved analysis record
+  function saveCitationState() {
     if (!currentResult || !currentResult.id) return;
     currentResult.citationResults = citeResults;
-    try { await sb.from("analyses").update({ citation_results: citeResults }).eq("id", currentResult.id); } catch (_) {}
+    storeUpsert({ id: currentResult.id, citation_results: citeResults });
   }
 
   // ============================================================
-  // Phase 4 — thumbs up/down feedback
+  // Thumbs up/down feedback (stored locally with the analysis)
   // ============================================================
   function fbKey(feature, key) { return feature + ":" + key; }
 
-  async function loadFeedback() {
+  function loadFeedback() {
     feedbackMap = {};
+    if (!currentResult || !currentResult.id) return Promise.resolve();
+    const rec = storeGet(currentResult.id);
+    feedbackMap = (rec && rec.feedback) ? { ...rec.feedback } : (currentResult.feedback || {});
+    return Promise.resolve();
+  }
+  function persistFeedback() {
     if (!currentResult || !currentResult.id) return;
-    try {
-      const { data } = await sb.from("feedback")
-        .select("feature, item_key, rating, comment").eq("analysis_id", currentResult.id);
-      (data || []).forEach((f) => { feedbackMap[fbKey(f.feature, f.item_key)] = { rating: f.rating, comment: f.comment || "" }; });
-    } catch (_) { /* table may not exist yet */ }
+    currentResult.feedback = feedbackMap;
+    storeUpsert({ id: currentResult.id, feedback: feedbackMap });
   }
 
   function feedbackBlock(feature, key) {
@@ -1694,36 +1696,111 @@
     });
   }
 
-  async function setFeedback(feature, key, rating) {
+  function setFeedback(feature, key, rating) {
     if (!currentResult || !currentResult.id) return;
     const k = fbKey(feature, key), cur = feedbackMap[k];
-    if (cur && cur.rating === rating) {
-      // clicking the active rating again clears it
-      delete feedbackMap[k];
-      try {
-        await sb.from("feedback").delete()
-          .eq("analysis_id", currentResult.id).eq("feature", feature).eq("item_key", key);
-      } catch (_) {}
-    } else {
-      feedbackMap[k] = { rating, comment: cur ? cur.comment : "" };
-      try {
-        await sb.from("feedback").upsert(
-          { analysis_id: currentResult.id, feature, item_key: key, rating, comment: feedbackMap[k].comment },
-          { onConflict: "user_id,analysis_id,feature,item_key" },
-        );
-      } catch (_) {}
-    }
+    if (cur && cur.rating === rating) delete feedbackMap[k];            // click active rating again clears it
+    else feedbackMap[k] = { rating, comment: cur ? cur.comment : "" };
+    persistFeedback();
     renderRefs(currentResult.references); renderCitations();
   }
-  async function saveComment(feature, key, comment) {
+  function saveComment(feature, key, comment) {
     const k = fbKey(feature, key); if (!feedbackMap[k]) return;
     feedbackMap[k].comment = comment;
-    try {
-      await sb.from("feedback").upsert(
-        { analysis_id: currentResult.id, feature, item_key: key, rating: feedbackMap[k].rating, comment },
-        { onConflict: "user_id,analysis_id,feature,item_key" },
-      );
-    } catch (_) {}
+    persistFeedback();
+  }
+
+  // ============================================================
+  // Settings (Gemini key / email / model / daily limit) + fact-check strictness
+  // ============================================================
+  function getStrictness() {
+    const el = $("strictness");
+    if (el) return el.value === "critical" ? "critical" : "broad";
+    return (localStorage.getItem("refcheck-strictness") === "critical") ? "critical" : "broad";
+  }
+  function refreshKeyNudge() {
+    const nudge = $("key-nudge");
+    if (nudge) nudge.classList.toggle("hidden", !!Core.getSettings().geminiKey);
+  }
+  function refreshUsageLine() {
+    const el = $("usage-line");
+    if (!el) return;
+    const u = Core.usageToday(), s = Core.getSettings();
+    el.textContent = `Used ${u.count} of ${s.dailyLimit} AI checks today.`;
+  }
+  function openSettings(show) {
+    const p = $("settings-panel");
+    if (!p) return;
+    p.classList.toggle("hidden", show === false);
+    if (show !== false) p.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  }
+  function wireSettings() {
+    const email = $("set-email"), key = $("set-key"), model = $("set-model"), limit = $("set-limit");
+    const s = Core.getSettings();
+    if (email) email.value = s.email;
+    if (key) key.value = s.geminiKey;
+    if (model) {
+      if (![...model.options].some((o) => o.value === s.model)) {
+        const o = document.createElement("option"); o.value = s.model; o.textContent = s.model; model.appendChild(o);
+      }
+      model.value = s.model;
+    }
+    if (limit) limit.value = s.dailyLimit;
+    refreshKeyNudge(); refreshUsageLine();
+
+    const save = () => {
+      Core.saveSettings({
+        email: email ? email.value.trim() : "",
+        geminiKey: key ? key.value.trim() : "",
+        model: model ? model.value : "gemini-2.5-flash",
+        dailyLimit: limit ? Math.max(1, parseInt(limit.value, 10) || 200) : 200,
+      });
+      refreshKeyNudge(); refreshUsageLine();
+    };
+    [email, model, limit].forEach((el) => { if (el) el.addEventListener("change", save); });
+    if (key) key.addEventListener("input", save);
+
+    const sBtn = $("settings-btn"); if (sBtn) sBtn.addEventListener("click", () => { showView("upload"); openSettings(true); });
+    const close = $("settings-close"); if (close) close.addEventListener("click", () => openSettings(false));
+    const link = $("key-nudge-link"); if (link) link.addEventListener("click", () => openSettings(true));
+
+    const detect = $("detect-models"), status = $("detect-status");
+    if (detect) detect.addEventListener("click", async () => {
+      save();
+      if (status) status.textContent = "Detecting…";
+      try {
+        const models = await Core.detectModels();
+        if (!models.length) { if (status) status.textContent = "Key works, but no Gemini models were returned."; return; }
+        if (model) {
+          const keep = model.value;
+          model.innerHTML = "";
+          models.forEach((m) => { const o = document.createElement("option"); o.value = m; o.textContent = m; model.appendChild(o); });
+          model.value = models.includes(keep) ? keep : (models.find((m) => /2\.5-flash$/.test(m)) || models[0]);
+          save();
+        }
+        if (status) status.textContent = `Key works — ${models.length} Gemini model${models.length === 1 ? "" : "s"} available.`;
+      } catch (err) {
+        if (status) status.textContent = err.message || "Couldn't detect models.";
+      }
+    });
+
+    const strict = $("strictness");
+    if (strict) {
+      strict.value = getStrictness();
+      strict.addEventListener("change", () => {
+        try { localStorage.setItem("refcheck-strictness", strict.value); } catch (_) {}
+        rerunCitationsForStrictness();
+      });
+    }
+  }
+  // Strictness changed → previous claim assessments are stale; clear and re-run for confirmed sources.
+  function rerunCitationsForStrictness() {
+    if (!currentResult) return;
+    citeResults = {};
+    saveCitationState();
+    applySourceEvidence(); refreshScoreUI();
+    renderCitations(); renderSources();
+    checkClaimsForConfirmedSources();
   }
 
   function wirePhase3() {

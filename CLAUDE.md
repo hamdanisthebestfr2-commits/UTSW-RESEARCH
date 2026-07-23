@@ -4,58 +4,67 @@
 > architected, how to run/deploy it, and the non-obvious gotchas. If you're a fresh Claude
 > session on a new machine, this file should get you fully oriented.
 
+> **ARCHITECTURE CHANGE (2026-07-23): the app is now 100% client-side. Supabase, login, and the
+> Deno Edge Function are GONE.** No account, no cloud, nothing uploaded to a server of ours. The old
+> `verify` Edge Function was fully ported into the browser as **`refcheck-core.js`**; existence checks
+> hit the public APIs directly (CORS-enabled, no key), and Gemini is called straight from the browser
+> with the **user's own API key** (stored in `localStorage`). History is saved in `localStorage` too.
+
 ## What this is
 **REF/CHECK AI** — an AI-powered academic manuscript / reference verification platform.
 A user uploads a manuscript (PDF or DOCX); the app extracts every citation, verifies each
-reference's **existence** against **CrossRef + PubMed**, uses **Gemini** to judge plausibility (real vs.
-fabricated), and shows a polished, animated report: the manuscript text with **in-text citations
-highlighted** and **linked** to a panel of reference cards.
+reference's **existence** against **CrossRef + PubMed + OpenAlex + DataCite + Google Books + Internet
+Archive**, uses **Gemini** (user's key) to judge plausibility (real vs. fabricated), and shows a polished,
+animated report: the manuscript text with **in-text citations highlighted** and **linked** to a panel of
+reference cards.
 
 Beyond that core (Phases 1–2), the app now implements:
-- **Phase 3 — AI citation checking**: upload the cited source PDFs, auto-match them to references,
-  and have Gemini judge whether each in-text claim is **SUPPORTED / PARTIALLY / NOT SUPPORTED / UNCLEAR**
-  (falls back to the paper's abstract when no PDF). Plus CSV + Word-report export and a manual "flag for review".
-- **Phase 4 — feedback + admin**: thumbs up/down on every result (saved), an **admin dashboard**
-  (`admin.html`) with usage/accuracy stats + feedback CSV, and a global "X manuscripts checked" stat.
+- **Phase 3 — AI citation checking**: upload the cited source PDFs, auto-match them to references, and
+  have Gemini judge whether each in-text claim is **SUPPORTED / PARTIAL / NOT SUPPORTED / UNCLEAR**, with a
+  **Broad vs. Critical** strictness selector (falls back to the paper's abstract when no PDF). The source
+  card shows the article's claim next to a verbatim source passage. **A confirmed source whose claim isn't
+  supported flags the reference as a citation error — identity-confirmed ≠ correctly-cited.** Plus CSV +
+  Word-report export and a manual "flag for review".
+- **Phase 4 — feedback**: thumbs up/down on every result, saved **locally** with the analysis. (The old
+  Supabase admin dashboard was removed with the backend.)
 - **Phase 5 (partial) — stretch**: **batch** multi-manuscript processing with a queue, and a client-side
-  **reference-format consistency** checker. (Teams/shared workspaces are the one remaining stretch item — not built.)
+  **reference-format consistency** checker. (Teams/shared workspaces — not built; would need a real backend.)
 
 This repo contains **both** the marketing landing page **and** the working app.
 
-## Stack (no build step, no framework, no npm)
+## Stack (no build step, no framework, no npm, no backend)
 - **Static frontend**: plain HTML/CSS/JS. **Tailwind via CDN** with an inline `tailwind.config`
   in a `<script>` on each page (utility classes are generated at runtime in the browser).
-- **Auth + database**: **Supabase** (email/password + Google OAuth; per-user analysis history with RLS).
-- **Backend**: a single **Supabase Edge Function** (Deno) at `supabase/functions/verify` that holds
-  the Gemini API key as a server-side secret and calls Gemini + CrossRef. **The key never reaches the browser.**
+- **No auth, no database, no server.** Everything runs in the browser. Analysis history + settings
+  (Gemini key, email, model, daily limit) live in `localStorage`.
+- **Core logic**: `refcheck-core.js` — the ported "verify" pipeline. Existence checks call CrossRef,
+  PubMed, OpenAlex, DataCite, Google Books, and the Wayback Machine directly (all CORS-enabled, no key).
+  Gemini (`generativelanguage.googleapis.com`) is called from the browser with the **user's own key**.
 - **Client-side parsing**: `pdf.js` (PDF) + `mammoth.js` (DOCX), loaded from CDN.
 - **Fonts**: Space Grotesk (display), Inter (body), JetBrains Mono (labels/mono), Material Symbols (icons), all via Google Fonts.
 - Platform: **Windows / PowerShell**. Git repo: yes (see GitHub section).
 
 ## Run it
-```bash
-python -m http.server 8000      # from the project root
-# open http://localhost:8000
-```
-Stop: `Stop-Process -Name python`. Verify a change: `(Invoke-WebRequest http://localhost:8000 -UseBasicParsing).StatusCode` → expect `200`.
-Scripts are **cache-busted with `?v=N`** query strings — after editing `app-ui.js` / `auth.js` /
-`supabase-config.js`, bump the `?v=` in the referencing HTML, and hard-reload (**Ctrl+F5**).
+The app is a static site — serve the folder any way you like. On this machine (no Python) use the
+bundled PowerShell server from the parent working folder: `powershell -ExecutionPolicy Bypass -File .\serve.ps1`
+(serves `UTSW-RESEARCH-main/` on `http://localhost:8000`). Verify: `(Invoke-WebRequest http://localhost:8000 -UseBasicParsing).StatusCode` → `200`.
+Scripts are **cache-busted with `?v=N`** query strings — after editing `app-ui.js` / `refcheck-core.js`,
+bump the `?v=` in `app.html`, and hard-reload (**Ctrl+F5**). **There is no backend to deploy.** To use the
+AI features, open **Settings** and paste a free Gemini key from aistudio.google.com/apikey.
 
 ## File map
 | File | Purpose |
 |------|---------|
-| `index.html` | Landing page. Holds the design system: `tailwind.config` (color/font tokens) + a big `<style>` block with all custom CSS utilities. |
+| `index.html` | Landing page. Holds the design system: `tailwind.config` (color/font tokens) + a big `<style>` block with all custom CSS utilities. CTAs now link straight to `app.html` (no login). |
 | `app.js` | Landing-page interactions only (one IIFE). NOT used by the app. |
-| `auth.html` / `auth.js` | Login / signup page (email/password + Google), themed. |
-| `app.html` / `app-ui.js` | **The product**: gated workspace — upload, extract, analyze, results, source-PDF citation checking, feedback, batch, format check. |
-| `admin.html` / `admin.js` | **Admin dashboard** (Phase 4). Gated to `window.ADMIN_EMAILS`; reads all analyses + feedback for usage/accuracy stats + CSV export. |
-| `supabase-config.js` | Supabase URL + publishable key + `AUTH_REDIRECT` + `AUTH_TESTING` + **`ADMIN_EMAILS`**. Loaded by auth/app/admin pages. |
-| `supabase/functions/verify/index.ts` | **Edge Function** — Gemini + CrossRef + PubMed. Two actions: default = extract/verify; `action:"cite"` = Phase-3 citation check. Only place the Gemini key is used (via env). |
-| `supabase/functions/verify/deno.json`, `supabase/config.toml` | Function scaffolding; `config.toml` sets `verify_jwt = true`. |
-| `supabase/setup_phase3_4.sql` | **One-time DB setup** for Phase 3/4: `citation_results` column, `feedback` table + RLS, admin read-policies, `app_stats()` RPC. Run in the Supabase SQL editor. |
-| `dashboard.html` | **Legacy/unused** earlier placeholder; post-login redirect goes to `app.html`, not here. |
+| `app.html` / `app-ui.js` | **The product**: the workspace — upload, extract, analyze, results, source-PDF citation checking, strictness, Settings, feedback, batch, format check. Opens directly (no auth gate). |
+| `refcheck-core.js` | **The engine** (`window.RefCheckCore`). Ported from the old Edge Function: reference extraction (Gemini), existence cascade (CrossRef→PubMed→OpenAlex→DataCite→Google Books→Wayback), claim-check (`assessCitation`, with Broad/Critical strictness) and source-PDF match (`assessMatch`). Holds settings + daily-limit in `localStorage`. `run(body)` returns `{data,error}` mirroring the old `sb.functions.invoke("verify",…)`. |
 | `refrences/` | A concept screenshot (note the folder is spelled "refrences"). |
 | `README.md`, `.gitignore` | Repo basics. |
+
+**Deleted in the 2026-07-23 rewrite** (do not look for these — they're gone): `auth.html`, `auth.js`,
+`admin.html`, `admin.js`, `supabase-config.js`, `dashboard.html`, and the entire `supabase/` folder
+(the `verify` Edge Function, `config.toml`, `setup_phase3_4.sql`).
 
 ## Design language (igloo.inc-inspired, monochrome)
 Near-black canvas, white/silver accents, glass surfaces, subtle grain + grid + aurora bloom. The
@@ -95,26 +104,16 @@ appears **only** on verification states and is muted.
 - Cards with `.beam` also get a subtle **3D tilt** toward the cursor (and the first/hero landing card is
   intentionally excluded).
 
-## Authentication (Supabase)
-- **Project ref**: `emzssipjrkknheomfjem` · **API URL**: `https://emzssipjrkknheomfjem.supabase.co`
-- `supabase-config.js` holds the **publishable (anon) key** — safe to expose; RLS protects data. Also
-  `window.AUTH_REDIRECT = origin + "/app.html"` and `window.AUTH_TESTING` (see below).
-- `auth.js`: email/password (`signUp`, `signInWithPassword`) + Google (`signInWithOAuth({provider:'google', redirectTo: AUTH_REDIRECT})`).
-  Errors are surfaced **on the page** (red box). Sign in ⇄ Create account toggle; `?mode=signup` deep link.
-- **Google OAuth setup** (already configured): in Google Cloud the OAuth client's **Authorized redirect URI**
-  must be the Supabase callback `https://emzssipjrkknheomfjem.supabase.co/auth/v1/callback` (NOT localhost/app.html).
-  In Supabase → Auth → URL Configuration: **Site URL** `http://localhost:8000`, **Redirect URLs** include
-  `http://localhost:8000/app.html`.
-- **"Confirm email"**: if ON in Supabase, email signup sends a confirmation link instead of logging in
-  immediately (the page says "check your inbox"). Toggle OFF (Auth → Providers → Email) for instant testing.
-- `window.AUTH_TESTING` (currently **false**): when `true`, loading `auth.html` signs you out and `app.html`
-  logs you out on reload — a loop for re-testing login. Set `false` for normal persisted sessions.
-- Landing buttons: "Log in" → `auth.html`; "Get Started"/CTAs → `auth.html?mode=signup`.
+## Authentication
+**There is none.** The app opens straight into the workspace. (Removed 2026-07-23 — no Supabase, no
+Google OAuth, no session gate. If you find yourself reading about `auth.js` or `AUTH_REDIRECT`, that
+content is historical.)
 
 ## The app (`app.html` + `app-ui.js`)
-- **Auth gate**: no Supabase session → redirect to `auth.html`.
-- **Shell**: top bar (logo, user email/avatar, Sign out), left **sidebar** ("New analysis" + **history list**
-  from the `analyses` table), main area with three views toggled via inline `display`: **upload → processing → results**.
+- **No auth gate**: `app.html` opens directly. Top bar shows a "Runs locally" pill + **Settings** + theme toggle.
+- **Shell**: left **sidebar** ("New analysis" + **history list** from `localStorage`), main area with three
+  views toggled via inline `display`: **upload → processing → results**. The upload view also hosts the
+  **Settings** panel (Gemini key/email/model/daily limit) and a "no key" nudge.
 - **Upload**: drag-&-drop + file picker, `.pdf`/`.docx`, ≤20 MB, inline validation.
 - **Extraction (client-side, no key)**: `pdf.js` (`pdfjs-dist@3.11.174` UMD; `workerSrc` set) for PDF,
   `mammoth.js` for DOCX. `sliceReferences()` finds the References/Bibliography heading and returns
@@ -136,67 +135,44 @@ appears **only** on verification states and is muted.
 - **History**: clicking a past analysis rebuilds the full view (incl. the highlighted document, since
   `document_text` is stored). `loadHistory()` falls back gracefully if the `document_text` column is missing.
 
-## Backend — Edge Function `verify` (`supabase/functions/verify/index.ts`)
-- **Deno**, **JWT-protected** (`verify_jwt = true`) so only logged-in users can spend the key.
-- **Env**: `GEMINI_API_KEY` (secret — the ONLY place the key exists), `GEMINI_MODEL` (default `gemini-2.5-flash`),
-  `CONTACT_EMAIL` (CrossRef/PubMed polite-pool email; default `support@ref-check.ai`), `PUBMED_API_KEY` (optional, raises NCBI rate limit).
-- **Two actions** (branched on `body.action`):
-  - **default (verify)** — Input `{ filename, referencesText }`; caps: 60k input chars, `MAX_REFS` 40, `VERIFY_CONCURRENCY` 4.
-    One Gemini call (JSON `responseSchema`) → `{ citationStyle, references[] }`; each ref has
-    `raw, authors, title, year, journal, doi, marker, verdict (verified|review|flagged), confidence, reason`.
-    Existence via **`verifyExistence`**: CrossRef (DOI lookup, else bibliographic query; title similarity ≥ 0.6),
-    then **PubMed esearch+esummary fallback**. Adds `exists, source (crossref|pubmed|""), crossrefUrl, pmid, pubmedUrl,
-    matchedTitle, abstract`. **Reconcile** verdict + existence; `integrityScore = round(100*(verified + 0.5*review)/total)`.
-    Returns `{ filename, total, counts, integrityScore, citationStyle, references[] }`.
-  - **`action:"cite"`** (Phase 3) — Input `{ claim, paperText, paperTitle, basis }`; one Gemini call (`assessCitation`,
-    `MAX_CITE_CHARS` 16k) → `{ assessment: supported|partial|not_supported|unclear, explanation, basis }`.
-- CORS + OPTIONS handled. **One `functions deploy verify` ships both actions.**
+## The engine — `refcheck-core.js` (`window.RefCheckCore`, all in the browser)
+The old Deno Edge Function was ported here verbatim in logic; the only real changes are (a) no server
+env — settings come from `localStorage`; (b) no custom `User-Agent` header (browsers forbid it) — polite-pool
+identification uses the `mailto`/`email` query param instead; (c) the arbitrary-URL web fetch (CORS-blocked
+in a browser) was swapped for a **Wayback Machine availability** check.
+- **Settings** (`getSettings`/`saveSettings`, `localStorage` key `refcheck-settings`): `{ geminiKey, email,
+  model (default gemini-2.5-flash), dailyLimit (default 200) }`. `usageToday()` tracks the day's Gemini calls;
+  `bumpUsage()` enforces the daily limit. `detectModels()` lists usable Gemini models for the key.
+- **`run(body)` → `{ data, error }`** (mirrors the old `sb.functions.invoke("verify", …)`; `app-ui.js` calls
+  `Core.run(...)`). Actions:
+  - **default (verify)** — `{ filename, referencesText }`. Gemini `analyzeReferences` (chunked, temp 0 + seed 7)
+    → refs; existence via **`verifyExistence`** cascade CrossRef→PubMed→OpenAlex→DataCite→Google Books→Wayback,
+    then `reconcile`. Returns `{ filename, total, counts, integrityScore, citationStyle, references[] }`.
+  - **`action:"cite"`** — `{ claim, paperText, paperTitle, basis, strictness }` → `assessCitation`
+    → `{ assessment, explanation, sourceQuote, basis }`. **`strictness`** is `"broad"` (defensible readings pass)
+    or `"critical"` (also flags overstatement).
+  - **`action:"match"`** — `{ paperText, ref }` → `assessMatch` (is this uploaded PDF the cited work?)
+    → `{ verdict (confirmed|partial|mismatch), explanation, foundTitle/Authors/Year, evidence[] }`.
+- **Gemini** is called at `generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=…` with
+  the user's key. Existence APIs (CrossRef, NCBI eutils, OpenAlex, DataCite, Google Books, archive.org) are all
+  CORS-enabled and need **no key**. Retraction: PubMed pub-type + OpenAlex `is_retracted` (+ DOI probe).
 
-### Gemini model notes (learned the hard way)
-- `gemini-2.0-flash` returned **429 (no free-tier quota)** on this key. `gemini-2.5-flash` and
-  `gemini-2.5-flash-lite` both work → we use **`gemini-2.5-flash`** (good quality, free tier). Switch via the
-  `GEMINI_MODEL` secret/env to `gemini-2.5-flash-lite` to cut cost.
-- The provided key starts `AQ.…` (unusual; standard AI Studio keys are `AIzaSy…`). It authenticates fine. If
-  it ever fails auth, create a key at aistudio.google.com/apikey and re-run `secrets set` + `deploy` — no code change.
+### Gemini model notes
+- Use **`gemini-2.5-flash`** (good quality, free tier) or `gemini-2.5-flash-lite` (cheaper). `gemini-2.0-flash`
+  had no free-tier quota. The Settings "Detect available models" button lists what the user's key can use.
+- The user pastes their own key in **Settings**; it lives only in their browser's `localStorage`. Nothing is
+  proxied through any server of ours.
 
-## Database (Supabase Postgres)
-Table `public.analyses` (run in Supabase SQL Editor):
-```sql
-create table public.analyses (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  filename text not null,
-  integrity_score int not null,
-  counts jsonb not null,        -- {verified, review, flagged}
-  results jsonb not null,       -- array of reference objects (see function output)
-  document_text text            -- extracted manuscript text (for the highlighted history view)
-);
-alter table public.analyses enable row level security;
-create policy "own_select" on public.analyses for select using (auth.uid() = user_id);
-create policy "own_insert" on public.analyses for insert with check (auth.uid() = user_id);
-create policy "own_delete" on public.analyses for delete using (auth.uid() = user_id);
-```
-(`document_text` was added after the initial table; if migrating: `alter table public.analyses add column if not exists document_text text;`.)
+## Storage (browser `localStorage` — no database)
+- `refcheck-analyses` — array (cap 50) of past analyses: `{ id, filename, integrity_score, counts, results,
+  citation_results, feedback, document_text, created_at }`. Powers the sidebar history and the highlighted
+  rebuild. Managed by `loadStore`/`storeUpsert`/`storeGet` in `app-ui.js`.
+- `refcheck-settings` (see above), `refcheck-usage` (daily counter), `refcheck-strictness`, `refcheck-theme`.
+- Thumbs feedback is stored **inside each analysis record** (`.feedback`), not a separate table.
 
-**Phase 3/4 additions** — run **`supabase/setup_phase3_4.sql`** once in the SQL editor. It adds:
-- `analyses.citation_results jsonb` — stores Phase-3 AI citation assessments (keyed by citation-instance id `c0,c1,…`).
-- table **`public.feedback`** (`user_id, analysis_id, feature 'reference'|'citation', item_key, rating 'up'|'down', comment`) + RLS
-  (own CRUD) + a unique index `(user_id, analysis_id, feature, item_key)` (required for the app's upsert).
-- **admin read-policies** on `analyses` + `feedback` keyed on `auth.jwt() ->> 'email'` (must match `window.ADMIN_EMAILS`).
-- **`app_stats()`** security-definer RPC → `{ manuscripts, references_count }` for the global usage line.
-
-## Deploy / setup the backend (one-time)
-The Supabase CLI is **not installed globally**; use `npx`. On Windows PowerShell, `npx` may be blocked by the
-execution policy — either `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first, or call `npx.cmd`.
-```bash
-npx supabase login                                  # interactive (browser)
-npx supabase secrets set GEMINI_API_KEY=<key> --project-ref emzssipjrkknheomfjem
-npx supabase functions deploy verify --project-ref emzssipjrkknheomfjem
-```
-`functions deploy` prints a harmless "Docker is not running" warning, then deploys via the API. Passing
-`--project-ref` avoids needing `supabase link` (and its DB-password prompt). Smoke test:
-`Invoke-WebRequest -Method OPTIONS https://emzssipjrkknheomfjem.supabase.co/functions/v1/verify` → 200.
+## Deploy
+**Nothing to deploy** — it's a static site with no backend. Serve the folder (locally, `serve.ps1`) or host
+the static files anywhere (Netlify/Vercel/GitHub Pages). Each user brings their own Gemini key via Settings.
 
 ## GitHub
 - Remote: **https://github.com/hamdanisthebestfr2-commits/UTSW-RESEARCH** (`origin`, branch `main`).
@@ -218,17 +194,17 @@ npx supabase functions deploy verify --project-ref emzssipjrkknheomfjem
 ## Known follow-ups / cautions
 - **Landing testimonials + hero stats are placeholders** — replace before any public launch.
 - Highlight matching is **best-effort** (messy PDFs / unusual styles may miss marks; refs still display).
-- `dashboard.html` is legacy and unused.
-- No deploy pipeline for the static site (runs locally). If asked to publish, confirm the host (Netlify/Vercel)
-  — it needs the user's account.
-- **Built since the first version** (Phases 3–5): source-PDF upload + per-claim "supported by source" check; PubMed
-  alongside CrossRef; CSV + Word-report export; thumbs feedback + admin dashboard; batch processing; format checker.
-  After editing `app-ui.js`/`supabase-config.js`, the cache-buster is at **`?v=12`** (and `admin.html` loads `?v=10`).
-  Results open with a **plain-language "teacher summary" verdict banner** (`#verdict-banner`, `teacherVerdict()`/`renderVerdictBanner()`)
-  that calls the essay **reliable / review recommended / unreliable (possible fabricated sources)** — also folded into the `.doc` report.
-- **Still open / next ideas**: **Teams / shared workspaces** (the one un-built Phase-5 stretch — needs multi-account RLS,
-  validate with 2+ accounts); OCR for scanned source PDFs; persisting matched source-PDF text (today only the
-  citation *assessments* persist, not the PDFs — re-checking after reload needs re-upload); a shared `theme.css`.
+- No deploy pipeline — static site. To publish, host the files anywhere; each user brings their own Gemini key.
+- **Cache-buster** after editing `app-ui.js`/`refcheck-core.js`: bump `?v=` in `app.html` (currently
+  `app-ui.js?v=26`, `refcheck-core.js?v=1`), hard-reload Ctrl+F5.
+- Results open with a **plain-language "teacher summary" verdict banner** (`#verdict-banner`,
+  `teacherVerdict()`/`renderVerdictBanner()`): **reliable / review recommended / unreliable** — folded into the `.doc` report.
+- **Verified ≠ correctly-cited**: a source PDF confirmed as reference [N] proves the paper is real, but if the
+  claim citing it comes back `not_supported`, `applySourceEvidence()` **flags** that reference (citation error)
+  rather than marking it verified. `partial` → review.
+- **Still open / next ideas**: OCR for scanned source PDFs; persisting matched source-PDF text (today only the
+  citation *assessments* persist in `localStorage`, not the PDFs — re-checking after reload needs re-upload);
+  a shared `theme.css`; optional cross-device sync would require re-introducing a backend.
 
 ## Working style for this project
 The user iterates fast on visual feel and often pastes **React/shadcn component code** to "incorporate" —
