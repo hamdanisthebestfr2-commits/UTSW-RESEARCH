@@ -7,9 +7,18 @@
 ## What this is
 **REF/CHECK AI** — an AI-powered academic manuscript / reference verification platform.
 A user uploads a manuscript (PDF or DOCX); the app extracts every citation, verifies each
-reference's **existence** against CrossRef, uses **Gemini** to judge plausibility (real vs.
+reference's **existence** against **CrossRef + PubMed**, uses **Gemini** to judge plausibility (real vs.
 fabricated), and shows a polished, animated report: the manuscript text with **in-text citations
 highlighted** and **linked** to a panel of reference cards.
+
+Beyond that core (Phases 1–2), the app now implements:
+- **Phase 3 — AI citation checking**: upload the cited source PDFs, auto-match them to references,
+  and have Gemini judge whether each in-text claim is **SUPPORTED / PARTIALLY / NOT SUPPORTED / UNCLEAR**
+  (falls back to the paper's abstract when no PDF). Plus CSV + Word-report export and a manual "flag for review".
+- **Phase 4 — feedback + admin**: thumbs up/down on every result (saved), an **admin dashboard**
+  (`admin.html`) with usage/accuracy stats + feedback CSV, and a global "X manuscripts checked" stat.
+- **Phase 5 (partial) — stretch**: **batch** multi-manuscript processing with a queue, and a client-side
+  **reference-format consistency** checker. (Teams/shared workspaces are the one remaining stretch item — not built.)
 
 This repo contains **both** the marketing landing page **and** the working app.
 
@@ -38,10 +47,12 @@ Scripts are **cache-busted with `?v=N`** query strings — after editing `app-ui
 | `index.html` | Landing page. Holds the design system: `tailwind.config` (color/font tokens) + a big `<style>` block with all custom CSS utilities. |
 | `app.js` | Landing-page interactions only (one IIFE). NOT used by the app. |
 | `auth.html` / `auth.js` | Login / signup page (email/password + Google), themed. |
-| `app.html` / `app-ui.js` | **The product**: gated workspace — upload, extract, analyze, results. |
-| `supabase-config.js` | Supabase URL + publishable key + `AUTH_REDIRECT` + `AUTH_TESTING` flag. Loaded by auth/app pages. |
-| `supabase/functions/verify/index.ts` | **Edge Function** — Gemini + CrossRef. The only place the Gemini key is used (via env). |
+| `app.html` / `app-ui.js` | **The product**: gated workspace — upload, extract, analyze, results, source-PDF citation checking, feedback, batch, format check. |
+| `admin.html` / `admin.js` | **Admin dashboard** (Phase 4). Gated to `window.ADMIN_EMAILS`; reads all analyses + feedback for usage/accuracy stats + CSV export. |
+| `supabase-config.js` | Supabase URL + publishable key + `AUTH_REDIRECT` + `AUTH_TESTING` + **`ADMIN_EMAILS`**. Loaded by auth/app/admin pages. |
+| `supabase/functions/verify/index.ts` | **Edge Function** — Gemini + CrossRef + PubMed. Two actions: default = extract/verify; `action:"cite"` = Phase-3 citation check. Only place the Gemini key is used (via env). |
 | `supabase/functions/verify/deno.json`, `supabase/config.toml` | Function scaffolding; `config.toml` sets `verify_jwt = true`. |
+| `supabase/setup_phase3_4.sql` | **One-time DB setup** for Phase 3/4: `citation_results` column, `feedback` table + RLS, admin read-policies, `app_stats()` RPC. Run in the Supabase SQL editor. |
 | `dashboard.html` | **Legacy/unused** earlier placeholder; post-login redirect goes to `app.html`, not here. |
 | `refrences/` | A concept screenshot (note the folder is spelled "refrences"). |
 | `README.md`, `.gitignore` | Repo basics. |
@@ -127,14 +138,19 @@ appears **only** on verification states and is muted.
 
 ## Backend — Edge Function `verify` (`supabase/functions/verify/index.ts`)
 - **Deno**, **JWT-protected** (`verify_jwt = true`) so only logged-in users can spend the key.
-- **Env**: `GEMINI_API_KEY` (secret — the ONLY place the key exists), `GEMINI_MODEL` (default `gemini-2.5-flash`).
-- **Input** `{ filename, referencesText }`; caps: 60k input chars, `MAX_REFS` 40, CrossRef concurrency 5.
-- **One Gemini call** with a JSON `responseSchema` → `{ citationStyle, references[] }`; each ref has
-  `raw, authors, title, year, journal, doi, marker, verdict (verified|review|flagged), confidence, reason`.
-- **CrossRef** per reference (DOI lookup, else bibliographic query; title similarity ≥ 0.6) → `exists`,
-  `doi`, `crossrefUrl`, `matchedTitle`.
-- **Reconcile** Gemini verdict + CrossRef existence; `integrityScore = round(100*(verified + 0.5*review)/total)`.
-- **Returns** `{ filename, total, counts, integrityScore, citationStyle, references[] }`. CORS + OPTIONS handled.
+- **Env**: `GEMINI_API_KEY` (secret — the ONLY place the key exists), `GEMINI_MODEL` (default `gemini-2.5-flash`),
+  `CONTACT_EMAIL` (CrossRef/PubMed polite-pool email; default `support@ref-check.ai`), `PUBMED_API_KEY` (optional, raises NCBI rate limit).
+- **Two actions** (branched on `body.action`):
+  - **default (verify)** — Input `{ filename, referencesText }`; caps: 60k input chars, `MAX_REFS` 40, `VERIFY_CONCURRENCY` 4.
+    One Gemini call (JSON `responseSchema`) → `{ citationStyle, references[] }`; each ref has
+    `raw, authors, title, year, journal, doi, marker, verdict (verified|review|flagged), confidence, reason`.
+    Existence via **`verifyExistence`**: CrossRef (DOI lookup, else bibliographic query; title similarity ≥ 0.6),
+    then **PubMed esearch+esummary fallback**. Adds `exists, source (crossref|pubmed|""), crossrefUrl, pmid, pubmedUrl,
+    matchedTitle, abstract`. **Reconcile** verdict + existence; `integrityScore = round(100*(verified + 0.5*review)/total)`.
+    Returns `{ filename, total, counts, integrityScore, citationStyle, references[] }`.
+  - **`action:"cite"`** (Phase 3) — Input `{ claim, paperText, paperTitle, basis }`; one Gemini call (`assessCitation`,
+    `MAX_CITE_CHARS` 16k) → `{ assessment: supported|partial|not_supported|unclear, explanation, basis }`.
+- CORS + OPTIONS handled. **One `functions deploy verify` ships both actions.**
 
 ### Gemini model notes (learned the hard way)
 - `gemini-2.0-flash` returned **429 (no free-tier quota)** on this key. `gemini-2.5-flash` and
@@ -162,6 +178,13 @@ create policy "own_insert" on public.analyses for insert with check (auth.uid() 
 create policy "own_delete" on public.analyses for delete using (auth.uid() = user_id);
 ```
 (`document_text` was added after the initial table; if migrating: `alter table public.analyses add column if not exists document_text text;`.)
+
+**Phase 3/4 additions** — run **`supabase/setup_phase3_4.sql`** once in the SQL editor. It adds:
+- `analyses.citation_results jsonb` — stores Phase-3 AI citation assessments (keyed by citation-instance id `c0,c1,…`).
+- table **`public.feedback`** (`user_id, analysis_id, feature 'reference'|'citation', item_key, rating 'up'|'down', comment`) + RLS
+  (own CRUD) + a unique index `(user_id, analysis_id, feature, item_key)` (required for the app's upsert).
+- **admin read-policies** on `analyses` + `feedback` keyed on `auth.jwt() ->> 'email'` (must match `window.ADMIN_EMAILS`).
+- **`app_stats()`** security-definer RPC → `{ manuscripts, references_count }` for the global usage line.
 
 ## Deploy / setup the backend (one-time)
 The Supabase CLI is **not installed globally**; use `npx`. On Windows PowerShell, `npx` may be blocked by the
@@ -198,8 +221,14 @@ npx supabase functions deploy verify --project-ref emzssipjrkknheomfjem
 - `dashboard.html` is legacy and unused.
 - No deploy pipeline for the static site (runs locally). If asked to publish, confirm the host (Netlify/Vercel)
   — it needs the user's account.
-- **Next phase ideas**: upload source PDFs + per-claim "supported by source" check; PubMed alongside CrossRef;
-  OCR for scanned PDFs; export/share polish; a shared `theme.css` to stop duplicating the design tokens per page.
+- **Built since the first version** (Phases 3–5): source-PDF upload + per-claim "supported by source" check; PubMed
+  alongside CrossRef; CSV + Word-report export; thumbs feedback + admin dashboard; batch processing; format checker.
+  After editing `app-ui.js`/`supabase-config.js`, the cache-buster is at **`?v=12`** (and `admin.html` loads `?v=10`).
+  Results open with a **plain-language "teacher summary" verdict banner** (`#verdict-banner`, `teacherVerdict()`/`renderVerdictBanner()`)
+  that calls the essay **reliable / review recommended / unreliable (possible fabricated sources)** — also folded into the `.doc` report.
+- **Still open / next ideas**: **Teams / shared workspaces** (the one un-built Phase-5 stretch — needs multi-account RLS,
+  validate with 2+ accounts); OCR for scanned source PDFs; persisting matched source-PDF text (today only the
+  citation *assessments* persist, not the PDFs — re-checking after reload needs re-upload); a shared `theme.css`.
 
 ## Working style for this project
 The user iterates fast on visual feel and often pastes **React/shadcn component code** to "incorporate" —
