@@ -75,6 +75,28 @@
   const GEMINI_MAX_RETRIES = 5;
   const GEMINI_MAX_BACKOFF_MS = 60000;
   function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  // The public existence APIs (CrossRef especially) throttle bursts — and we fire several checks at once.
+  // A single 429/503 or a dropped connection used to silently sink a REAL reference to "not found",
+  // because the whole cascade falls through when its first, best index hiccups. Retry transient failures
+  // (network error, 429, 5xx) a few times with backoff so a real, findable work isn't lost to a blip.
+  async function fetchRetry(url, opts, tries) {
+    tries = tries || 3;
+    for (let i = 0; ; i++) {
+      let r;
+      try {
+        r = await fetch(url, opts);
+      } catch (e) {
+        if (i >= tries - 1) throw e;
+        await sleep(500 * (i + 1) + Math.random() * 250);
+        continue;
+      }
+      const transient = r.status === 429 || (r.status >= 500 && r.status <= 599);
+      if (r.ok || !transient || i >= tries - 1) return r;
+      await sleep(500 * (i + 1) + Math.random() * 250);
+    }
+  }
+
   let _gemLast = 0, _gemChain = Promise.resolve();
   // Serialize every Gemini call through one chain with a min gap between them. While a call is sleeping
   // for a 429 retry, the whole chain waits behind it — exactly the back-pressure we want at the RPM ceiling.
@@ -505,12 +527,23 @@ Also return:
     const e = getSettings().email;
     return e ? `&mailto=${encodeURIComponent(e)}` : "";
   }
+  // The DOI may be in the parsed .doi field, buried in a doi.org link, or sitting in the raw citation
+  // string — grab it from wherever it is so a "web link" reference can still resolve to its real record.
+  function extractDoi(ref) {
+    const d = (ref.doi || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+    if (/^10\.\d{4,9}\//.test(d)) return d;
+    const hay = `${ref.url || ""} ${ref.raw || ""}`;
+    const m = hay.match(/10\.\d{4,9}\/[^\s"'<>)\]}]+/);
+    return m ? m[0].replace(/[.,;]+$/, "").trim() : "";
+  }
 
   async function crossrefCheck(ref) {
     try {
-      if (ref.doi) {
-        const clean = ref.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
-        const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(clean)}?rows=1${mailtoParam()}`);
+      const doi0 = extractDoi(ref);
+      if (doi0) {
+        // encodeURI (NOT encodeURIComponent): CrossRef's /works/{doi} endpoint 400s on a percent-encoded
+        // slash (%2F) but resolves fine with the raw slash a DOI needs.
+        const r = await fetchRetry(`https://api.crossref.org/works/${encodeURI(doi0)}${mailtoParam() ? "?" + mailtoParam().slice(1) : ""}`);
         if (r.ok) {
           const j = await r.json();
           const item = j?.message;
@@ -529,7 +562,7 @@ Also return:
       let bestTitle, bestScore = 0;
       const seen = new Set();
       for (const q of queries) {
-        const r = await fetch(`https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(q)}&rows=8&select=DOI,title,author,issued,abstract${mailtoParam()}`);
+        const r = await fetchRetry(`https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(q)}&rows=8&select=DOI,title,author,issued,abstract${mailtoParam()}`);
         if (!r.ok) continue;
         const j = await r.json();
         const items = j?.message?.items ?? [];
@@ -538,7 +571,7 @@ Also return:
           const key = String(item.DOI || t).toLowerCase();
           if (seen.has(key)) continue;
           seen.add(key);
-          if (ref.doi && item.DOI && ref.doi.toLowerCase().includes(String(item.DOI).toLowerCase())) {
+          if (doi0 && item.DOI && doi0.toLowerCase().includes(String(item.DOI).toLowerCase())) {
             return { exists: true, source: "crossref", doi: item.DOI, crossrefUrl: `https://doi.org/${item.DOI}`,
               matchedTitle: t, abstract: stripJats(item.abstract) };
           }
@@ -576,14 +609,14 @@ Also return:
       if (surn) attempts.push(`${title} ${surn}`);
       let ids = [];
       for (const term of attempts) {
-        const sr = await fetch(ncbi("esearch.fcgi", { db: "pubmed", term, retmode: "json", retmax: "5" }));
+        const sr = await fetchRetry(ncbi("esearch.fcgi", { db: "pubmed", term, retmode: "json", retmax: "5" }));
         if (!sr.ok) continue;
         const sj = await sr.json();
         ids = sj?.esearchresult?.idlist ?? [];
         if (ids.length) break;
       }
       if (!ids.length) return { exists: false, source: "" };
-      const er = await fetch(ncbi("esummary.fcgi", { db: "pubmed", id: ids.join(","), retmode: "json" }));
+      const er = await fetchRetry(ncbi("esummary.fcgi", { db: "pubmed", id: ids.join(","), retmode: "json" }));
       if (!er.ok) return { exists: false, source: "" };
       const ej = await er.json();
       const res = ej?.result ?? {};
@@ -616,7 +649,7 @@ Also return:
       u.searchParams.set("search", title);
       u.searchParams.set("per_page", "5");
       const e = getSettings().email; if (e) u.searchParams.set("mailto", e);
-      const r = await fetch(u.toString());
+      const r = await fetchRetry(u.toString());
       if (!r.ok) return { exists: false, source: "" };
       const j = await r.json();
       const items = j?.results ?? [];
@@ -648,7 +681,7 @@ Also return:
       // still confirms existence if DataCite resolves it.
       const doi0 = (ref.doi || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
       if (doi0) {
-        const dr = await fetch(`https://api.datacite.org/dois/${encodeURIComponent(doi0)}`);
+        const dr = await fetchRetry(`https://api.datacite.org/dois/${encodeURIComponent(doi0)}`);
         if (dr.ok) {
           const dj = await dr.json();
           const at = dj?.data?.attributes;
@@ -664,7 +697,7 @@ Also return:
       const u = new URL("https://api.datacite.org/dois");
       u.searchParams.set("query", title);
       u.searchParams.set("page[size]", "5");
-      const r = await fetch(u.toString());
+      const r = await fetchRetry(u.toString());
       if (!r.ok) return { exists: false, source: "" };
       const j = await r.json();
       const items = j?.data ?? [];
@@ -695,7 +728,7 @@ Also return:
       u.searchParams.set("q", `intitle:${title}`);
       u.searchParams.set("maxResults", "5");
       u.searchParams.set("country", "US");
-      const r = await fetch(u.toString());
+      const r = await fetchRetry(u.toString());
       if (!r.ok) return { exists: false, source: "" };
       const j = await r.json();
       const items = j?.items ?? [];
@@ -741,7 +774,7 @@ Also return:
     const url = extractUrl(ref);
     if (!url || !isPublicHttpUrl(url)) return { exists: false, source: "", webStatus: "no-url" };
     try {
-      const r = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
+      const r = await fetchRetry(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
       if (!r.ok) return { exists: false, source: "", webUrl: url, webStatus: "unreachable" };
       const j = await r.json();
       const snap = j?.archived_snapshots?.closest;
@@ -757,7 +790,7 @@ Also return:
       const clean = doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
       if (!clean) return false;
       const u = `https://api.openalex.org/works/doi:${encodeURIComponent(clean)}?select=is_retracted${mailtoParam()}`;
-      const r = await fetch(u);
+      const r = await fetchRetry(u);
       if (!r.ok) return false;
       const j = await r.json();
       return j?.is_retracted === true;
@@ -782,7 +815,7 @@ Also return:
     try {
       let work = null;
       if (doi) {
-        const r = await fetch(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?select=abstract_inverted_index${mailtoParam()}`);
+        const r = await fetchRetry(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?select=abstract_inverted_index${mailtoParam()}`);
         if (r.ok) work = await r.json();
       }
       if (!work && ref.title) {
@@ -791,7 +824,7 @@ Also return:
         u.searchParams.set("per_page", "1");
         u.searchParams.set("select", "abstract_inverted_index,title");
         const e = getSettings().email; if (e) u.searchParams.set("mailto", e);
-        const r = await fetch(u.toString());
+        const r = await fetchRetry(u.toString());
         if (r.ok) { const j = await r.json(); work = (j?.results || [])[0] || null; }
       }
       const abs = work ? reconstructAbstract(work.abstract_inverted_index) : undefined;
@@ -801,7 +834,7 @@ Also return:
     try {
       const q = doi ? `DOI:"${doi}"` : (ref.title ? `TITLE:"${ref.title.replace(/"/g, "")}"` : "");
       if (q) {
-        const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&resultType=core&format=json&pageSize=1`);
+        const r = await fetchRetry(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&resultType=core&format=json&pageSize=1`);
         if (r.ok) {
           const j = await r.json();
           const abs = j?.resultList?.result?.[0]?.abstractText;
