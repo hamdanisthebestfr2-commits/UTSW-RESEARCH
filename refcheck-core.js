@@ -485,6 +485,9 @@ Also return:
     else if (dice >= 0.8 && inter >= 4) ok = true;
     else if (A.size <= 4 && B.size <= 4 && dice >= 0.85) ok = true;
     else if (surMatch && yrMatch && inter >= 1) ok = true;
+    // a near-identical title (of any length) is the same work even if the author list didn't parse —
+    // this is what lets a real, paywalled paper whose title clearly matches get confirmed.
+    else if (dice >= 0.85 && inter >= 3) ok = true;
     return { ok, score: dice };
   }
   function stripJats(s) {
@@ -641,6 +644,21 @@ Also return:
 
   async function dataciteCheck(ref) {
     try {
+      // direct DOI resolution first: a DOI CrossRef doesn't index (datasets, theses, some publishers)
+      // still confirms existence if DataCite resolves it.
+      const doi0 = (ref.doi || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+      if (doi0) {
+        const dr = await fetch(`https://api.datacite.org/dois/${encodeURIComponent(doi0)}`);
+        if (dr.ok) {
+          const dj = await dr.json();
+          const at = dj?.data?.attributes;
+          if (at && (at.doi || dj?.data?.id)) {
+            const doi = String(at.doi || doi0).replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+            return { exists: true, source: "datacite", doi, crossrefUrl: `https://doi.org/${doi}`,
+              matchedTitle: at?.titles?.[0]?.title, abstract: stripJats(at?.descriptions?.[0]?.description) };
+          }
+        }
+      }
       const title = (ref.title ?? "").trim();
       if (!title) return { exists: false, source: "" };
       const u = new URL("https://api.datacite.org/dois");
@@ -754,6 +772,46 @@ Also return:
     return hit;
   }
 
+  // A confirmed reference (esp. via CrossRef, which rarely returns abstracts) often has no text for the
+  // citation-accuracy check. Fetch the abstract from OpenAlex (huge coverage) or Europe PMC (biomedical)
+  // so claims CAN be checked against the source's own words even when the full paper is paywalled.
+  async function augmentAbstract(hit, ref) {
+    if (!hit.exists || (hit.abstract && hit.abstract.length > 40)) return hit;
+    const doi = (hit.doi || ref.doi || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+    // 1) OpenAlex — by DOI, then by title
+    try {
+      let work = null;
+      if (doi) {
+        const r = await fetch(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?select=abstract_inverted_index${mailtoParam()}`);
+        if (r.ok) work = await r.json();
+      }
+      if (!work && ref.title) {
+        const u = new URL("https://api.openalex.org/works");
+        u.searchParams.set("search", ref.title);
+        u.searchParams.set("per_page", "1");
+        u.searchParams.set("select", "abstract_inverted_index,title");
+        const e = getSettings().email; if (e) u.searchParams.set("mailto", e);
+        const r = await fetch(u.toString());
+        if (r.ok) { const j = await r.json(); work = (j?.results || [])[0] || null; }
+      }
+      const abs = work ? reconstructAbstract(work.abstract_inverted_index) : undefined;
+      if (abs && abs.length > 40) return { ...hit, abstract: abs };
+    } catch (_) {}
+    // 2) Europe PMC fallback (biomedical) — by DOI, then by title
+    try {
+      const q = doi ? `DOI:"${doi}"` : (ref.title ? `TITLE:"${ref.title.replace(/"/g, "")}"` : "");
+      if (q) {
+        const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(q)}&resultType=core&format=json&pageSize=1`);
+        if (r.ok) {
+          const j = await r.json();
+          const abs = j?.resultList?.result?.[0]?.abstractText;
+          if (abs) { const clean = stripJats(abs); if (clean && clean.length > 40) return { ...hit, abstract: clean }; }
+        }
+      }
+    } catch (_) {}
+    return hit;
+  }
+
   async function verifyExistence(ref) {
     let hit = null;
     const cr = await crossrefCheck(ref);
@@ -764,7 +822,7 @@ Also return:
     if (!hit) { dc = await dataciteCheck(ref); if (dc.exists) hit = { ...dc, doi: dc.doi ?? cr.doi, crossrefUrl: dc.crossrefUrl ?? cr.crossrefUrl }; }
     if (!hit) { gb = await googleBooksCheck(ref); if (gb.exists) hit = { ...gb, doi: cr.doi, crossrefUrl: cr.crossrefUrl }; }
     if (!hit) { web = await webCheck(ref); if (web.exists) hit = { ...web, doi: cr.doi, crossrefUrl: cr.crossrefUrl }; }
-    if (hit) return await augmentRetraction(hit);
+    if (hit) { hit = await augmentAbstract(hit, ref); return await augmentRetraction(hit); }
     return {
       exists: false, source: "", doi: cr.doi, crossrefUrl: cr.crossrefUrl,
       matchedTitle: cr.matchedTitle ?? pm?.matchedTitle ?? oa?.matchedTitle ?? dc?.matchedTitle ?? gb?.matchedTitle ?? web?.matchedTitle,
