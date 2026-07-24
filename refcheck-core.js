@@ -28,7 +28,9 @@
   const VERIFY_CONCURRENCY = 6;  // parallel existence checks
   const MAX_CITE_CHARS = 60000;
   const MAX_MATCH_CHARS = 200000;
-  const DEFAULT_MODEL = "gemini-2.5-flash-lite"; // broadly available + generous free per-minute limit
+  // The ONLY model this app uses. Locked to gemini-3.5-flash-lite (most generous free per-minute limit).
+  const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+  const ALLOWED_MODELS = [DEFAULT_MODEL];
 
   // ---------- settings (localStorage; this machine only) ----------
   const SETTINGS_KEY = "refcheck-settings";
@@ -39,7 +41,8 @@
     return {
       geminiKey: s.geminiKey || "",
       email: s.email || "",
-      model: s.model || DEFAULT_MODEL,
+      // Locked to the single allowed model — ignore any older stored value (e.g. gemini-2.5-*).
+      model: ALLOWED_MODELS.includes(s.model) ? s.model : DEFAULT_MODEL,
       dailyLimit: Number.isFinite(s.dailyLimit) ? s.dailyLimit : 200,
     };
   }
@@ -158,7 +161,7 @@
       return geminiAttempt(prompt, schema, s, attempt + 1);
     }
     if (res.status === 400 && /API key not valid/i.test(detail)) throw new Error("Gemini rejected the API key — double-check it in Settings.");
-    if (res.status === 429) throw new Error("Gemini's free-tier limit was hit repeatedly (429). Free gemini-2.5-flash allows only ~10 requests/minute — switch to gemini-2.5-flash-lite in Settings (higher free limit), check fewer sources at once, or wait a minute.");
+    if (res.status === 429) throw new Error("Gemini's free-tier limit was hit repeatedly (429). The free tier allows only a limited number of requests per minute — check fewer sources at once, or wait a minute and try again.");
     throw new Error(`Gemini request failed (${res.status}): ${detail.slice(0, 200)}`);
   }
 

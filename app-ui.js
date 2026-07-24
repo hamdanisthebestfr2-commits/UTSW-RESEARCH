@@ -1781,12 +1781,8 @@
     const s = Core.getSettings();
     if (email) email.value = s.email;
     if (key) key.value = s.geminiKey;
-    if (model) {
-      if (![...model.options].some((o) => o.value === s.model)) {
-        const o = document.createElement("option"); o.value = s.model; o.textContent = s.model; model.appendChild(o);
-      }
-      model.value = s.model;
-    }
+    // Model is locked to the single allowed option; never inject a stored/foreign model into the picker.
+    if (model && [...model.options].some((o) => o.value === s.model)) model.value = s.model;
     if (limit) limit.value = s.dailyLimit;
     refreshKeyNudge(); refreshUsageLine();
 
@@ -1794,7 +1790,7 @@
       Core.saveSettings({
         email: email ? email.value.trim() : "",
         geminiKey: key ? key.value.trim() : "",
-        model: model ? model.value : "gemini-2.5-flash",
+        model: model ? model.value : "gemini-3.5-flash-lite",
         dailyLimit: limit ? Math.max(1, parseInt(limit.value, 10) || 200) : 200,
       });
       refreshKeyNudge(); refreshUsageLine();
@@ -1805,26 +1801,6 @@
     const sBtn = $("settings-btn"); if (sBtn) sBtn.addEventListener("click", () => { showView("upload"); openSettings(true); });
     const close = $("settings-close"); if (close) close.addEventListener("click", () => openSettings(false));
     const link = $("key-nudge-link"); if (link) link.addEventListener("click", () => openSettings(true));
-
-    const detect = $("detect-models"), status = $("detect-status");
-    if (detect) detect.addEventListener("click", async () => {
-      save();
-      if (status) status.textContent = "Detecting…";
-      try {
-        const models = await Core.detectModels();
-        if (!models.length) { if (status) status.textContent = "Key works, but no Gemini models were returned."; return; }
-        if (model) {
-          const keep = model.value;
-          model.innerHTML = "";
-          models.forEach((m) => { const o = document.createElement("option"); o.value = m; o.textContent = m; model.appendChild(o); });
-          model.value = models.includes(keep) ? keep : (models.find((m) => /2\.5-flash$/.test(m)) || models[0]);
-          save();
-        }
-        if (status) status.textContent = `Key works — ${models.length} Gemini model${models.length === 1 ? "" : "s"} available.`;
-      } catch (err) {
-        if (status) status.textContent = err.message || "Couldn't detect models.";
-      }
-    });
 
     const strict = $("strictness");
     if (strict) {

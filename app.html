@@ -385,15 +385,11 @@
                 <label class="block text-[12px] text-white font-medium mb-1">Gemini API key <span class="text-ink-mute font-normal">· needed for AI checks</span></label>
                 <input id="set-key" type="password" placeholder="AIza…" autocomplete="off" class="w-full bg-surface-2 border border-border-subtle rounded-lg text-sm text-ink px-3 py-2 font-mono">
                 <div class="flex items-center gap-2 mt-2 flex-wrap">
-                  <button id="detect-models" class="glass px-2.5 py-1.5 rounded-md text-[11px] text-ink hover:border-border-strong inline-flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">search</span>Detect available models</button>
                   <select id="set-model" class="bg-surface-2 border border-border-subtle rounded-md text-[11px] text-ink px-2 py-1.5">
-                    <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (recommended — higher free limit)</option>
-                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (highest free limit)</option>
-                    <option value="gemini-3.5-flash">gemini-3.5-flash (best quality)</option>
-                    <option value="gemini-3.6-flash">gemini-3.6-flash (newest)</option>
+                    <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                   </select>
                 </div>
-                <div id="detect-status" class="text-[11px] text-ink-mute mt-1.5">Get a free key at <span class="text-ink-soft">aistudio.google.com/apikey</span>. Hitting rate limits? Pick a <b>-lite</b> model — its free tier allows more requests/minute. Click <b>Detect available models</b> to load exactly what your key supports. The app also auto-waits and retries on a limit.</div>
+                <div id="detect-status" class="text-[11px] text-ink-mute mt-1.5">Get a free key at <span class="text-ink-soft">aistudio.google.com/apikey</span>. This app runs on <b>gemini-3.5-flash-lite</b> — its free tier allows the most requests per minute. If you hit a limit, the app auto-waits and retries.</div>
               </div>
               <div>
                 <label class="block text-[12px] text-white font-medium mb-1">Daily check limit <span class="text-ink-mute font-normal">(safety stop)</span></label>
@@ -624,7 +620,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-  <script src="refcheck-core.js?v=7"></script>
+  <script src="refcheck-core.js?v=8"></script>
   <script>
   // Theme picker. Each theme = a family class (light|dark, drives the component overrides) + a
   // theme-<id> class (re-tints the CSS vars). Swatch = [background, ink, glow-accent].
@@ -685,6 +681,6 @@
     });
   })();
   </script>
-  <script src="app-ui.js?v=28"></script>
+  <script src="app-ui.js?v=29"></script>
 </body>
 </html>
