@@ -298,7 +298,10 @@
         </button>
         <div class="flex items-center justify-between px-1">
           <span class="font-mono text-[11px] text-ink-mute uppercase tracking-wider">History</span>
-          <span id="history-count" class="font-mono text-[11px] text-ink-mute">0</span>
+          <div class="flex items-center gap-2.5">
+            <span id="history-count" class="font-mono text-[11px] text-ink-mute">0</span>
+            <button id="history-clear" class="hidden font-mono text-[10px] text-ink-mute hover:text-bad transition-colors uppercase tracking-wider">Clear all</button>
+          </div>
         </div>
         <div id="history-list" class="flex flex-col gap-1.5 overflow-y-auto flex-grow">
           <p id="history-empty" class="text-xs text-ink-mute px-1 py-6 text-center">No analyses yet. Upload a manuscript to get started.</p>
@@ -681,6 +684,6 @@
     });
   })();
   </script>
-  <script src="app-ui.js?v=29"></script>
+  <script src="app-ui.js?v=30"></script>
 </body>
 </html>

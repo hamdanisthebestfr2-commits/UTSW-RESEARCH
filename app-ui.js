@@ -1049,21 +1049,30 @@
   function loadHistory() {
     const data = loadStore();
     if (historyCount) historyCount.textContent = data.length;
+    const clearBtn = $("history-clear");
+    if (clearBtn) clearBtn.classList.toggle("hidden", !data.length);
     historyList.querySelectorAll("[data-hid]").forEach((n) => n.remove());
     if (!data.length) { historyEmpty.classList.remove("hidden"); return; }
     historyEmpty.classList.add("hidden");
     data.forEach((row) => {
-      const el = document.createElement("button");
+      // Wrapper (not a <button>) so the delete control can be a real, separate button — a button
+      // nested inside a button is invalid HTML and swallows clicks.
+      const el = document.createElement("div");
       el.setAttribute("data-hid", row.id);
-      el.className = "text-left w-full rounded-lg px-3 py-2.5 border border-border-subtle hover:border-border-strong hover:bg-white/[0.03] transition-colors";
+      el.className = "group relative rounded-lg border border-border-subtle hover:border-border-strong hover:bg-white/[0.03] transition-colors";
       el.innerHTML = `
-        <div class="flex items-center gap-2">
-          <span class="material-symbols-outlined text-[16px] text-ink-mute shrink-0">description</span>
-          <span class="text-xs text-white truncate flex-grow">${escapeHtml(row.filename)}</span>
-          <span class="font-mono text-[11px] text-ink-soft shrink-0">${row.integrity_score}</span>
-        </div>
-        <div class="font-mono text-[10px] text-ink-mute mt-1">${new Date(row.created_at).toLocaleDateString()} · ${row.counts.flagged} flagged</div>`;
-      el.addEventListener("click", () => {
+        <button class="hist-open text-left w-full rounded-lg px-3 py-2.5 pr-9">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[16px] text-ink-mute shrink-0">description</span>
+            <span class="text-xs text-white truncate flex-grow">${escapeHtml(row.filename)}</span>
+            <span class="font-mono text-[11px] text-ink-soft shrink-0">${row.integrity_score}</span>
+          </div>
+          <div class="font-mono text-[10px] text-ink-mute mt-1">${new Date(row.created_at).toLocaleDateString()} · ${row.counts.flagged} flagged</div>
+        </button>
+        <button class="hist-del absolute top-1.5 right-1.5 w-6 h-6 rounded-md flex items-center justify-center text-ink-mute hover:text-bad hover:bg-bad/10 opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 transition-opacity" title="Delete this analysis" aria-label="Delete analysis">
+          <span class="material-symbols-outlined text-[15px]">delete</span>
+        </button>`;
+      el.querySelector(".hist-open").addEventListener("click", () => {
         const fullText = row.document_text || "";
         const { bodyEnd } = fullText ? sliceReferences(fullText) : { bodyEnd: 0 };
         currentResult = {
@@ -1077,8 +1086,28 @@
         renderResult(currentResult);
         closeSidebar();
       });
+      el.querySelector(".hist-del").addEventListener("click", (e) => { e.stopPropagation(); deleteHistory(row.id); });
       historyList.appendChild(el);
     });
+  }
+
+  // Delete one saved analysis (with confirmation). If it's the one on screen, return to upload.
+  function deleteHistory(id) {
+    const rec = storeGet(id);
+    const name = rec ? rec.filename : "this analysis";
+    if (!confirm(`Delete "${name}" from your history? This can't be undone.`)) return;
+    saveStore(loadStore().filter((r) => r.id !== id));
+    if (currentResult && currentResult.id === id) { currentResult = null; showView("upload"); }
+    loadHistory();
+  }
+  // Delete the entire history at once (with confirmation).
+  function clearAllHistory() {
+    const n = loadStore().length;
+    if (!n) return;
+    if (!confirm(`Delete all ${n} saved ${n === 1 ? "analysis" : "analyses"}? This can't be undone.`)) return;
+    saveStore([]);
+    currentResult = null; showView("upload");
+    loadHistory();
   }
 
   $("new-analysis-btn").addEventListener("click", () => {
@@ -1087,6 +1116,8 @@
     clearBatch();
     showView("upload"); closeSidebar();
   });
+
+  { const hc = $("history-clear"); if (hc) hc.addEventListener("click", clearAllHistory); }
 
   $("batch-start").addEventListener("click", processBatch);
 
